@@ -5,8 +5,7 @@ import random
 from .config import KohaInputLayerConfig
 
 class KohaInputLayer(torch.nn.Module):
-    # The Koha input layer is the layer performs (in the case of text) a one-to-one mapping from token to embedding. It's training is equivalent to that of word2vec
-    # TO DO: explore if gradient descent + sigmoid can be substituted with simple Hebbian learning.
+    # The Koha input layer performs (in the case of text) a one-to-one mapping from token to embedding. It's training is equivalent to that of word2vec
     def __init__(self, config:KohaInputLayerConfig):
         super().__init__()
         self.vocab_size = config.vocab_size
