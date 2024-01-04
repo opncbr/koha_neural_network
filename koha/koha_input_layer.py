@@ -14,16 +14,16 @@ class KohaInputLayer(torch.nn.Module):
         self.lr = config.lr
         self.window_size = config.window_size
         self.neg_sampling_num = config.neg_sampling_num
-        self.sample = config.sample
-        self.total = 0
+        #self.sample = config.sample
+        # self.total = 0
         self.EPS = 1e-15
-
+        self.neg_iter = 1
         #self.signatures = Parameter(torch.empty((self.vocab_size, self.emb_dim)), requires_grad=True)
         self.signatures = Embedding(self.vocab_size, self.emb_dim, sparse= config.sparse)
         self.signature_optimizer = torch.optim.SparseAdam(list(self.parameters()), lr=0.01)
         self.previous_winners = []
         #self.register_buffer("unit_occurrence", torch.ones(self.vocab_size, dtype=torch.int32))
-        self.register_buffer("negative_unit_filter", torch.randint(0,self.vocab_size,(1, self.vocab_size * config.unit_filter_scale)).squeeze(0)) # used for negative sampling
+        self.register_buffer("_negative_unigram", torch.randint(0,self.vocab_size,(1, self.vocab_size * config.neg_unigram_scale)).squeeze(0)) # used for negative sampling
         self.reset_parameters()
     
     def reset_parameters(self):
@@ -31,6 +31,9 @@ class KohaInputLayer(torch.nn.Module):
 
     def clear_previous_winners(self):
         self.previous_winners = []
+
+    def get_neg_unigram(self):
+        return self._negative_unigram[: self.neg_iter]
 
     #def _subsample(self, x):
     #    rands = torch.rand(len(x))
@@ -48,10 +51,6 @@ class KohaInputLayer(torch.nn.Module):
     #    self.unit_occurrence[x] += 1 #.scatter_add_(0, index=x, src=count)
     #    total += 1
 
-    def _update_negative_unit_filter(self, x):
-        rand_ind = random.randint(0, self.vocab_size)
-        self.negative_unit_filter[rand_ind] = x
-
     def _get_positive_samples(self, x):
         if self.previous_winners != []:
             context, target = torch.tensor(self.previous_winners), torch.ones(len(self.previous_winners), dtype=torch.int32) * x
@@ -65,8 +64,10 @@ class KohaInputLayer(torch.nn.Module):
 
     def _get_negative_samples(self, x):
         target = torch.ones(self.neg_sampling_num, dtype=torch.int32) * x
-        rand = torch.randint(0, self.vocab_size, (1, self.neg_sampling_num)).squeeze(0)
-        context = self.negative_unit_filter[rand]
+        rand = torch.randint(0, self.neg_iter, (1, self.neg_sampling_num)).squeeze(0)
+        context = self._negative_unigram[rand]
+        if self.neg_iter < self._negative_unigram.size(0):
+            self.neg_iter += 1
         return context, target
 
     def loss(self, x):
@@ -94,7 +95,7 @@ class KohaInputLayer(torch.nn.Module):
         # update unit frequencies
         # self._update_occurrence(x)
         # perform subsampling 
-        
+        print(self.neg_iter)
         # compute signature gradients
         self.signature_optimizer.zero_grad()
         loss = self.loss(x)

@@ -8,7 +8,7 @@ class KohaInputLayerConfig():
     window_size: int = 10 # temporal window to learn the signature embeddings
     neg_sampling_num: int = 20 # number of negative samples
     sample = 1e-3 # constant used to control positive sampling
-    unit_filter_scale = 1000 # used for negative sampling
+    neg_unigram_scale = 10 # used for negative sampling
     sparse = True # used for the embeddings of the signatures
 
 @dataclass
