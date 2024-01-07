@@ -1,9 +1,8 @@
 import torch
-from torch.nn.parameter import Parameter
 from torch.nn import Embedding
 from math import sqrt
-import random
 from .config import KohaInputLayerConfig
+import random
 
 class KohaInputLayer(torch.nn.Module):
     # The Koha input layer performs (in the case of text) a one-to-one mapping from token to embedding. It's training is equivalent to that of word2vec
@@ -14,42 +13,26 @@ class KohaInputLayer(torch.nn.Module):
         self.lr = config.lr
         self.window_size = config.window_size
         self.neg_sampling_num = config.neg_sampling_num
-        #self.sample = config.sample
-        # self.total = 0
         self.EPS = 1e-15
-        self.neg_iter = 1
-        #self.signatures = Parameter(torch.empty((self.vocab_size, self.emb_dim)), requires_grad=True)
+        self.neg_iter = 0
         self.signatures = Embedding(self.vocab_size, self.emb_dim, sparse= config.sparse)
         self.signature_optimizer = torch.optim.SparseAdam(list(self.parameters()), lr=0.01)
         self.previous_winners = []
-        #self.register_buffer("unit_occurrence", torch.ones(self.vocab_size, dtype=torch.int32))
         self.register_buffer("_negative_unigram", torch.randint(0,self.vocab_size,(1, self.vocab_size * config.neg_unigram_scale)).squeeze(0)) # used for negative sampling
         self.reset_parameters()
     
+
     def reset_parameters(self):
         torch.nn.init.kaiming_uniform_(self.signatures.weight, a=sqrt(5))
+
 
     def clear_previous_winners(self):
         self.previous_winners = []
 
+
     def get_neg_unigram(self):
         return self._negative_unigram[: self.neg_iter]
 
-    #def _subsample(self, x):
-    #    rands = torch.rand(len(x))
-    #    print(rands.shape)
-    #    freq = self.unit_occurrence[x] / self.total
-    #    print(freq.shape)
-    #    token_prob = (torch.sqrt(freq / self.sample) + 1) * (self.sample / freq)
-    #    print(token_prob.shape)
-    #    to_be_kept = token_prob > rands
-    #    sampled_tokens = x[to_be_kept]
-    #    return sampled_tokens
-
-    #def _update_occurrence(self, x):
-    #    #count = torch.ones_like(x)
-    #    self.unit_occurrence[x] += 1 #.scatter_add_(0, index=x, src=count)
-    #    total += 1
 
     def _get_positive_samples(self, x):
         if self.previous_winners != []:
@@ -62,16 +45,24 @@ class KohaInputLayer(torch.nn.Module):
             context, target = None, None
         return context, target
 
+
     def _get_negative_samples(self, x):
         target = torch.ones(self.neg_sampling_num, dtype=torch.int32) * x
-        rand = torch.randint(0, self.neg_iter, (1, self.neg_sampling_num)).squeeze(0)
+        rand = torch.randint(0, self.neg_iter + 1, (1, self.neg_sampling_num)).squeeze(0)
         context = self._negative_unigram[rand]
-        if self.neg_iter < self._negative_unigram.size(0):
-            self.neg_iter += 1
         return context, target
+    
+
+    def update_neg_unigram(self, x):
+        if self.neg_iter < self._negative_unigram.size(0) - 1:
+            self._negative_unigram[self.neg_iter] = x
+            self.neg_iter += 1
+        else:
+            rand = random.randint(0, self._negative_unigram.size(0) - 1)
+            self._negative_unigram[rand] = x
+
 
     def loss(self, x):
-        
         # compute positive loss
         context, target = self._get_positive_samples(x)
         positive_loss = 0
@@ -92,14 +83,14 @@ class KohaInputLayer(torch.nn.Module):
         
 
     def forward(self, x):
-        # update unit frequencies
-        # self._update_occurrence(x)
-        # perform subsampling 
         print(self.neg_iter, x)
         # compute signature gradients
         self.signature_optimizer.zero_grad()
         loss = self.loss(x)
         loss.backward()
+
+        # update negative unigram
+        self.update_neg_unigram(x)
 
         # update signatures
         self.signature_optimizer.step()
