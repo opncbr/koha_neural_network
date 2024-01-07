@@ -95,7 +95,7 @@ class KohaInputLayer(torch.nn.Module):
         # update unit frequencies
         # self._update_occurrence(x)
         # perform subsampling 
-        print(self.neg_iter)
+        print(self.neg_iter, x)
         # compute signature gradients
         self.signature_optimizer.zero_grad()
         loss = self.loss(x)

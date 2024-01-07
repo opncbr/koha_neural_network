@@ -16,7 +16,7 @@ num_workers = 0
 
 
 class TextDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset, block_size, train=False):
+    def __init__(self, dataset, block_size, train):
         self.data = np.memmap(
             os.path.join(f'data/{dataset}', "train.bin" if train else "val.bin"),
             dtype=np.uint16,
@@ -35,7 +35,7 @@ class TextDataset(torch.utils.data.Dataset):
         return x, y
 
 
-data = TextDataset(dataset = dataset, block_size = sequence_length)
+data = TextDataset(dataset = dataset, block_size = sequence_length, train=True)
 data_loader = DataLoader(data, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
 
 config = KohaInputLayerConfig()
