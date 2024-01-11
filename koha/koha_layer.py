@@ -12,7 +12,6 @@ class KohaLayer(torch.nn.Module):
         self.sigma = config.sigma
         self.receptive_field = config.receptive_field
         self.neg_sampling_num = config.neg_sampling_num
-        self.EPS = 1e-15
         self.keys = torch.nn.Linear(self.emb_dim, self.unit_num, bias=config.bias)
         self.values = Parameter(torch.empty((self.unit_num, self.emb_dim)))
         self.previous_winners = []
@@ -25,8 +24,6 @@ class KohaLayer(torch.nn.Module):
         k = self.keys(x)
 
         pos_distribution = F.softmax(k, dim=-1)
+        neg_distribution = F.softmax(-k, dim=-1)
         pos_values = pos_distribution @ self.v
-        neg_values = 
-    
-# have a key value pair for each synapse. perform competitive learning for each synapse. take the scores of the BMUs and perform softmax, combine them, create one combines signature.
-# no hebbian update rule required. the synapse as well as the signature get udpated through gradient descent. 
+        neg_values = neg_distribution @ self.v
