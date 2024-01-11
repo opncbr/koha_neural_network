@@ -9,9 +9,13 @@ class State():
         self.window_size = window_size
         self.pos_past = None
         self.neg_past = None
+    
+    def state_transition(self, pos, neg):
+
 class KohaLayer(torch.nn.Module):
-    def __init__(self, config:KohaLayerConfig):
+    def __init__(self, config:KohaLayerConfig, first_layer: bool):
         super().__init__()
+        self.first_layer = first_layer
         self.unit_num = config.unit_num
         self.emb_dim = config.emb_dim
         self.receptive_field = config.receptive_field
@@ -27,9 +31,14 @@ class KohaLayer(torch.nn.Module):
     def forward(self, x):
         k = self.keys(x)
 
+        # compute positive sample
         pos_distribution = F.softmax(k, dim=-1)
-        with torch.no_grad():
+        # compute negative sample. If first layer == True, allow gradient flow (removes the need for pos/neg sampling for the embedding layer)
+        if self.first_layer:
             neg_distribution = F.softmax(-k, dim=-1)
+        else:
+            with torch.no_grad():
+                neg_distribution = F.softmax(-k, dim=-1)
 
         pos_values = pos_distribution @ self.v
         neg_values = neg_distribution @ self.v
