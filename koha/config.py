@@ -17,5 +17,9 @@ class KohaLayerConfig():
     window_size: int = 10 # temporal window to learn the signature embeddings
     receptive_field = 10 # the number of previous time steps from which a unit receives / sends inputs / outputs to.
     n_head: int = 12 # number of heads. Each unit receives inputs from each winner of each head within the attention radius
-    neg_sampling_num: int = 20 # number of negative samples
     bias: bool = False
+    weight_decay: float = 1e-1
+    learning_rate: float = 6e-4
+    beta1: float = 0.9
+    beta2: float = 0.95
+    device_type: str = "cpu"
