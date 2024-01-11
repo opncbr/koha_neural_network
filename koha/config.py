@@ -13,12 +13,9 @@ class KohaInputLayerConfig():
 @dataclass
 class KohaLayerConfig():
     unit_num: int = 100 # number of units
-    sigma: float = 10 # influences neighborhood distribution. smaller sigmas result in narrower neighborhoods
     emb_dim: int = 100 # dimensionality of signature (output) and weights (input)
+    window_size: int = 10 # temporal window to learn the signature embeddings
     receptive_field = 10 # the number of previous time steps from which a unit receives / sends inputs / outputs to.
-    context_size : int = 50
     n_head: int = 12 # number of heads. Each unit receives inputs from each winner of each head within the attention radius
     neg_sampling_num: int = 20 # number of negative samples
-    neg_unigram_scale: int = 10
-    sparse: bool = True # used for the embeddings of the signatures
     bias: bool = False
