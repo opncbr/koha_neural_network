@@ -10,13 +10,12 @@ class KohaInputLayer(torch.nn.Module):
         super().__init__()
         self.vocab_size = config.vocab_size
         self.emb_dim = config.emb_dim
-        self.lr = config.lr
         self.window_size = config.window_size
         self.neg_sampling_num = config.neg_sampling_num
         self.EPS = 1e-15
         self.neg_iter = 0
         self.signatures = Embedding(self.vocab_size, self.emb_dim, sparse= config.sparse)
-        self.signature_optimizer = torch.optim.SparseAdam(list(self.parameters()), lr=0.01)
+        self.signature_optimizer = torch.optim.SparseAdam(list(self.parameters()), lr=config.lr)
         self.previous_winners = []
         self.register_buffer("_negative_unigram", torch.randint(0,self.vocab_size,(1, self.vocab_size * config.neg_unigram_scale)).squeeze(0)) # used for negative sampling
         self.reset_parameters()
