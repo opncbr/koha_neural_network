@@ -24,6 +24,7 @@ class KohaLayer(torch.nn.Module):
         k = self.keys(x)
 
         pos_distribution = F.softmax(k, dim=-1)
-        neg_distribution = F.softmax(-k, dim=-1)
+        with torch.no_grad():
+            neg_distribution = F.softmax(-k, dim=-1)
         pos_values = pos_distribution @ self.v
         neg_values = neg_distribution @ self.v
