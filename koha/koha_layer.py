@@ -42,3 +42,12 @@ class KohaLayer(torch.nn.Module):
 
         pos_values = pos_distribution @ self.v
         neg_values = neg_distribution @ self.v
+
+        # create positive & negative samples
+        
+        # perform backprop
+
+        # return layer state
+        with torch.no_grad():
+            y_prime = pos_distribution @ self.v
+        return y_prime
