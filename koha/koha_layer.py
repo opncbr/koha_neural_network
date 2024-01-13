@@ -21,25 +21,51 @@ class KohaLayer(torch.nn.Module):
     def __init__(self, config:KohaLayerConfig, first_layer: bool):
         super().__init__()
         self.first_layer = first_layer
-        self.unit_num = config.unit_num
         self.emb_dim = config.emb_dim
+        self.head_num = config.head_num
+        self.head_size = config.emb_dim // config.head_num
         self.receptive_field = config.receptive_field
         self.EPS = 1e-15
-        self.keys = torch.nn.Linear(self.emb_dim, self.unit_num, bias=config.bias)
-        self.values = Parameter(torch.empty((self.unit_num, self.emb_dim)))
+
+        self.query_key = Parameter(torch.empty((self.head_num, self.head_size, self.emb_dim))) # Shape (head_num, head_size, emb_dim)
+        self.query_value = Parameter(torch.empty((self.head_num, self.head_size, self.head_size))) # Shape (head_num, head_size, head_size)
+        self.key_keys = Parameter(torch.empty((self.head_num, self.receptive_field, self.head_size, self.emb_dim))) # Shape (head_num, receptive_field, head_size, emb_dim)
+        self.key_values = Parameter(torch.empty((self.head_num, self.receptive_field, self.head_size, self.head_size))) # Shape (head_num, receptive_field, head_size, head_size)
+        self.att_values = Parameter(torch.empty((self.head_num, self.receptive_field, self.head_size))) # Shape (head_num, receptive_field, head_size)
+        
         self.layer_optimizer = self.configure_optimizer(config)
         self.state = State(config.window_size)
-        self.reset_parameters()
+        self._initialize_parameters()
+
+    def _initialize_parameters(self, module):
+        if isinstance(module, Parameter):
+            torch.nn.init.normal_(module.data, mean=0.0, std=0.02)
     
-    def reset_parameters(self):
-        torch.nn.init.kaiming_uniform_(self.values, a=sqrt(5))
+    # incomplete forward
+    def forward(self, x, z):
+        batch = x.size(0)
+
+        q = torch.einsum('be, hne -> bhn', x, self.query_key) # Shape (batch, head_num, head_size)
+        q = F.softmax(q, dim=-1) # Shape (batch, head_num, receptive_field, head_size)
+        q = torch.einsum('bhn, hnm -> bhm', q, self.query_value) # n and m have the same dim 
+
+        k = torch.einsum('bre, hrne -> bhrn', z, self.key_keys) # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
+        k = F.softmax(k, dim=-1) # Shape (batch, receptive_field, emb_dim)
+        k = torch.einsum('bhrn, hrnm -> bhrm', k, self.key_values) # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
+
+        att = torch.einsum('bhn, bhrn -> bhr', q, k) * (1.0 / sqrt(self.head_size)) # Shape (batch, head_num, receptive_field)
+        att = att = F.softmax(att, dim=-1) # Shape (batch, head_num, receptive_field)
+        y = torch.einsum('bhr, hrn -> bhn', att, self.att_values) # Shape (batch, head_num, head_size)
+        y = y.reshape(batch, self.emb_dim) # Re-assemble all head outputs side by side. Shape (batch, emb_dim)
     
-    def forward(self, x):
+    # depreciated forward. Kept as a reference for forward() completion.
+    def old_forward(self, x):
+        # input x must be of shape (batch, emb_dim)
         k = self.keys(x)
 
-        # compute positive sample
+        # compute positive output
         pos_distribution = F.softmax(k, dim=-1)
-        # compute negative sample. If first layer == True, allow gradient flow (removes the need for pos/neg sampling for the embedding layer)
+        # compute negative output. If first layer == True, allow gradient flow (removes the need for pos/neg sampling for the embedding layer)
         if self.first_layer:
             neg_distribution = F.softmax(-k, dim=-1)
         else:
@@ -105,3 +131,5 @@ class KohaLayer(torch.nn.Module):
         print(f"using fused AdamW: {use_fused}")
 
         return optimizer
+    
+# q, k, v, y -
