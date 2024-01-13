@@ -2,7 +2,7 @@
 
 This is an ongoing research repository for the development of the Koha neural network.
 
-The Koha neural network is a new familty of artificial neural networks inspired by the Koha theory of biological memory.
+The Koha neural network is a new family of artificial neural networks inspired by the Koha theory of biological memory.
 
 The idea of the Koha neural network is to enable cheap horizontal scaling for large neural networks. Listed are some interesting ( and yet to be proven) attributes of the Koha neural network:
 - Conventional neural networks are structured as directed graphs. The Koha neural network is structured as an undirected graph.
