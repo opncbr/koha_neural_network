@@ -11,7 +11,7 @@ class KohaInputLayerConfig():
     sparse = True # used for the embeddings of the signatures
 
 @dataclass
-class KohaLayerConfig():
+class KohaBlockConfig():
     emb_dim: int = 100 # embedding dimension
     head_num: int = 12 # number of heads
     receptive_field = 10 # number of connections that a Koha block has to other Koha blocks

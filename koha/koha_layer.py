@@ -1,5 +1,5 @@
 import torch
-from .config import KohaLayerConfig
+from .config import KohaBlockConfig
 from torch.nn.parameter import Parameter
 from torch.nn import functional as F
 from math import sqrt
@@ -17,8 +17,8 @@ class State():
 
     def get_negative_samples(self):
 
-class KohaLayer(torch.nn.Module):
-    def __init__(self, config:KohaLayerConfig, first_layer: bool):
+class KohaBlock(torch.nn.Module):
+    def __init__(self, config:KohaBlockConfig, first_layer: bool):
         super().__init__()
         self.first_layer = first_layer
         self.emb_dim = config.emb_dim
