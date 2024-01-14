@@ -12,10 +12,13 @@ class State():
         self.neg_past = None
     
     def state_transition(self, pos, neg):
+        # XXX: to be implemented
 
     def get_positive_samples(self):
+        # XXX: to be implemented
 
     def get_negative_samples(self):
+        # XXX: to be implemented
 
 class KohaBlock(torch.nn.Module):
     def __init__(self, config:KohaBlockConfig, first_layer: bool):
@@ -45,6 +48,7 @@ class KohaBlock(torch.nn.Module):
     def forward(self, x, z):
         batch = x.size(0)
 
+        # compute positive and negative outputs
         q = torch.einsum('be, hne -> bhn', x, self.query_key) # Shape (batch, head_num, head_size)
         q_pos = F.softmax(q, dim=-1) # Shape (batch, head_num, receptive_field, head_size)
         if self.first_layer:
@@ -58,48 +62,33 @@ class KohaBlock(torch.nn.Module):
         k = torch.einsum('bre, hrne -> bhrn', z, self.key_keys) # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
         k_pos = F.softmax(k, dim=-1) # Shape (batch, receptive_field, emb_dim)
         if self.first_layer:
-            k_neg = F.softmax(k, dim=-1) # Shape (batch, receptive_field, emb_dim)
+            k_neg = k_pos
         else:
-            with torch.no_grad():
-                k_neg = F.softmax(k, dim=-1) # Shape (batch, receptive_field, emb_dim)
+            k_neg = k_pos.detach()
         k_pos = torch.einsum('bhrn, hrnm -> bhrm', k_pos, self.key_values) # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
         k_neg = torch.einsum('bhrn, hrnm -> bhrm', k_neg, self.key_values) # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
 
-        att_pos = torch.einsum('bhn, bhrn -> bhr', q, k) * (1.0 / sqrt(self.head_size)) # Shape (batch, head_num, receptive_field)
-        att_pos = F.softmax(att, dim=-1) # Shape (batch, head_num, receptive_field)
-        y = torch.einsum('bhr, hrn -> bhn', att, self.att_values) # Shape (batch, head_num, head_size)
-        y = y.reshape(batch, self.emb_dim) # Re-assemble all head outputs side by side. Shape (batch, emb_dim)
+        att_pos = torch.einsum('bhn, bhrn -> bhr', q_pos, k_pos) * (1.0 / sqrt(self.head_size)) # Shape (batch, head_num, receptive_field)
+        att_pos = F.softmax(att_pos, dim=-1) # Shape (batch, head_num, receptive_field)
+        y_pos = torch.einsum('bhr, hrn -> bhn', att_pos, self.att_values) # Shape (batch, head_num, head_size)
+        y_pos = y_pos.reshape(batch, self.emb_dim) # Re-assemble all head outputs side by side. Shape (batch, emb_dim)
+
+        att_neg = torch.einsum('bhn, bhrn -> bhr', q_neg, k_neg) * (1.0 / sqrt(self.head_size)) # Shape (batch, head_num, receptive_field)
+        att_neg = F.softmax(att_neg, dim=-1) # Shape (batch, head_num, receptive_field)
+        y_neg = torch.einsum('bhr, hrn -> bhn', att_neg, self.att_values) # Shape (batch, head_num, head_size)
+        y_neg = y_neg.reshape(batch, self.emb_dim) # Re-assemble all head outputs side by side. Shape (batch, emb_dim)
     
-
-    # depreciated forward. Kept as a reference for forward() completion.
-    def old_forward(self, x):
-        # input x must be of shape (batch, emb_dim)
-        k = self.keys(x)
-
-        # compute positive output
-        pos_distribution = F.softmax(k, dim=-1)
-        # compute negative output. If first layer == True, allow gradient flow (removes the need for pos/neg sampling for the embedding layer)
-        if self.first_layer:
-            neg_distribution = F.softmax(-k, dim=-1)
-        else:
-            with torch.no_grad():
-                neg_distribution = F.softmax(-k, dim=-1)
-
-        pos_values = pos_distribution @ self.v
-        neg_values = neg_distribution @ self.v
-
-        # create positive & negative samples
+        # add positive and negative outputs to the Memory State
+        # XXX: to be implemented
 
         # perform backprop
         self.layer_optimizer.zero_grad()
-        loss = self.loss(x)
+        loss = self.loss()
         loss.backward()
         self.layer_optimizer.step()
 
-        # return layer state
-        with torch.no_grad():
-            y_prime = pos_distribution @ self.v
-        return y_prime
+        # return positive output
+        return y_pos.detach()
     
 
     def loss(self):
@@ -119,7 +108,7 @@ class KohaBlock(torch.nn.Module):
         return positive_loss + negative_loss
     
 
-    def configure_optimizer(self, config: KohaLayerConfig):
+    def configure_optimizer(self, config: KohaBlockConfig):
         # start with all of the candidate parameters
         param_dict = {pn: p for pn, p in self.named_parameters()}
         # filter out those that do not require grad
@@ -145,4 +134,3 @@ class KohaBlock(torch.nn.Module):
 
         return optimizer
     
-# q, k, v, y -
