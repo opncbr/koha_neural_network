@@ -46,18 +46,31 @@ class KohaBlock(torch.nn.Module):
         batch = x.size(0)
 
         q = torch.einsum('be, hne -> bhn', x, self.query_key) # Shape (batch, head_num, head_size)
-        q = F.softmax(q, dim=-1) # Shape (batch, head_num, receptive_field, head_size)
-        q = torch.einsum('bhn, hnm -> bhm', q, self.query_value) # n and m have the same dim 
+        q_pos = F.softmax(q, dim=-1) # Shape (batch, head_num, receptive_field, head_size)
+        if self.first_layer:
+            q_neg = F.softmax(-q, dim=-1) # Shape (batch, head_num, receptive_field, head_size)
+        else:
+            with torch.no_grad():
+                q_neg = F.softmax(-q, dim=-1) # Shape (batch, head_num, receptive_field, head_size)
+        q_pos = torch.einsum('bhn, hnm -> bhm', q_pos, self.query_value) # n and m have the same dim 
+        q_neg = torch.einsum('bhn, hnm -> bhm', q_neg, self.query_value) # n and m have the same dim 
 
         k = torch.einsum('bre, hrne -> bhrn', z, self.key_keys) # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
-        k = F.softmax(k, dim=-1) # Shape (batch, receptive_field, emb_dim)
-        k = torch.einsum('bhrn, hrnm -> bhrm', k, self.key_values) # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
+        k_pos = F.softmax(k, dim=-1) # Shape (batch, receptive_field, emb_dim)
+        if self.first_layer:
+            k_neg = F.softmax(k, dim=-1) # Shape (batch, receptive_field, emb_dim)
+        else:
+            with torch.no_grad():
+                k_neg = F.softmax(k, dim=-1) # Shape (batch, receptive_field, emb_dim)
+        k_pos = torch.einsum('bhrn, hrnm -> bhrm', k_pos, self.key_values) # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
+        k_neg = torch.einsum('bhrn, hrnm -> bhrm', k_neg, self.key_values) # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
 
-        att = torch.einsum('bhn, bhrn -> bhr', q, k) * (1.0 / sqrt(self.head_size)) # Shape (batch, head_num, receptive_field)
-        att = att = F.softmax(att, dim=-1) # Shape (batch, head_num, receptive_field)
+        att_pos = torch.einsum('bhn, bhrn -> bhr', q, k) * (1.0 / sqrt(self.head_size)) # Shape (batch, head_num, receptive_field)
+        att_pos = F.softmax(att, dim=-1) # Shape (batch, head_num, receptive_field)
         y = torch.einsum('bhr, hrn -> bhn', att, self.att_values) # Shape (batch, head_num, head_size)
         y = y.reshape(batch, self.emb_dim) # Re-assemble all head outputs side by side. Shape (batch, emb_dim)
     
+
     # depreciated forward. Kept as a reference for forward() completion.
     def old_forward(self, x):
         # input x must be of shape (batch, emb_dim)
