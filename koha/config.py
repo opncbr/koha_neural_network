@@ -1,14 +1,5 @@
 from dataclasses import dataclass
-
-@dataclass
-class KohaInputLayerConfig():
-    lr: float = 0.01 # signature learning rate
-    vocab_size: int = 50256 # size of vocabulary
-    emb_dim: int = 100 # dimensionality of vocabulary embeddings
-    window_size: int = 10 # temporal window to learn the signature embeddings
-    neg_sampling_num: int = 20 # number of negative samples
-    neg_unigram_scale = 10 # used for negative sampling
-    sparse = True # used for the embeddings of the signatures
+from typing import List
 
 @dataclass
 class KohaBlockConfig():
@@ -21,3 +12,11 @@ class KohaBlockConfig():
     beta1: float = 0.9
     beta2: float = 0.95
     device_type: str = "cpu"
+
+@dataclass
+class KohaNetworkConfig():
+    lr: float = 0.01 # signature learning rate
+    vocab_size: int = 50256 # size of vocabulary
+    emb_dim: int = 100 # dimensionality of vocabulary embeddings
+    context: int = 10
+    koha_blocks: List[KohaBlockConfig] = [KohaBlockConfig(first_layer=True) if n==0 else KohaBlockConfig(first_layer=False) for n in range(context)]
