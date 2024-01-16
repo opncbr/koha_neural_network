@@ -19,4 +19,3 @@ class KohaNetworkConfig():
     vocab_size: int = 50256 # size of vocabulary
     emb_dim: int = 100 # dimensionality of vocabulary embeddings
     context: int = 10
-    koha_blocks: List[KohaBlockConfig] = [KohaBlockConfig(first_layer=True) if n==0 else KohaBlockConfig(first_layer=False) for n in range(context)]
