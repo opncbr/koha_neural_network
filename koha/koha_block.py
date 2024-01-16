@@ -7,7 +7,7 @@ import inspect
 
 
 class State:
-    def __init__(self, window_size):
+    def __init__(self, window_size: int):
         self.window_size = window_size
         self.pos_past: torch.Tensor | None = None
         self.neg_past: torch.Tensor | None = None
