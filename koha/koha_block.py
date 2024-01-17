@@ -14,10 +14,10 @@ class State:
 
     def state_transition(self, pos: torch.Tensor, neg: torch.Tensor):
         self.pos_past = torch.cat(
-            [self.pos_past, pos] if self.pos_past else [pos], dim=-2
+            [self.pos_past, pos] if self.pos_past is not None else [pos], dim=-2
         )
         self.neg_past = torch.cat(
-            [self.neg_past, neg] if self.neg_past else [neg], dim=-2
+            [self.neg_past, neg] if self.neg_past is not None else [neg], dim=-2
         )
 
         if self.neg_past.size(-2) > self.window_size:
@@ -74,64 +74,57 @@ class KohaBlock(torch.nn.Module):
         batch = x.size(0)
 
         # compute positive and negative outputs
-        q = torch.einsum(
-            "be, hne -> bhn", x, self.query_key
-        )  # Shape (batch, head_num, head_size)
-        q_pos = F.softmax(
-            q, dim=-1
-        )  # Shape (batch, head_num, receptive_field, head_size)
+
+        # Shape (batch, head_num, head_size)
+        q = torch.einsum("be, hne -> bhn", x, self.query_key)
+        # Shape (batch, head_num, receptive_field, head_size)
+        q_pos = F.softmax(q, dim=-1)
         if self.first_layer:
-            q_neg = F.softmax(
-                -q, dim=-1
-            )  # Shape (batch, head_num, receptive_field, head_size)
+            # Shape (batch, head_num, receptive_field, head_size)
+            q_neg = F.softmax(-q, dim=-1)
         else:
             with torch.no_grad():
-                q_neg = F.softmax(
-                    -q, dim=-1
-                )  # Shape (batch, head_num, receptive_field, head_size)
-        q_pos = torch.einsum(
-            "bhn, hnm -> bhm", q_pos, self.query_value
-        )  # n and m have the same dim
-        q_neg = torch.einsum(
-            "bhn, hnm -> bhm", q_neg, self.query_value
-        )  # n and m have the same dim
+                # Shape (batch, head_num, receptive_field, head_size)
+                q_neg = F.softmax(-q, dim=-1)
+        # n and m have the same dim
+        q_pos = torch.einsum("bhn, hnm -> bhm", q_pos, self.query_value)
+        # n and m have the same dim
+        q_neg = torch.einsum("bhn, hnm -> bhm", q_neg, self.query_value)
 
-        k = torch.einsum(
-            "bre, hrne -> bhrn", z, self.key_keys
-        )  # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
-        k_pos = F.softmax(k, dim=-1)  # Shape (batch, receptive_field, emb_dim)
+        # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
+        k = torch.einsum("bre, hrne -> bhrn", z, self.key_keys)
+        # Shape (batch, receptive_field, emb_dim)
+        k_pos = F.softmax(k, dim=-1)
         if self.first_layer:
             k_neg = k_pos
         else:
             k_neg = k_pos.detach()
-        k_pos = torch.einsum(
-            "bhrn, hrnm -> bhrm", k_pos, self.key_values
-        )  # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
-        k_neg = torch.einsum(
-            "bhrn, hrnm -> bhrm", k_neg, self.key_values
-        )  # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
+        # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
+        k_pos = torch.einsum("bhrn, hrnm -> bhrm", k_pos, self.key_values)
+        # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
+        k_neg = torch.einsum("bhrn, hrnm -> bhrm", k_neg, self.key_values)
 
+        # Shape (batch, head_num, receptive_field)
         att_pos = torch.einsum("bhn, bhrn -> bhr", q_pos, k_pos) * (
             1.0 / sqrt(self.head_size)
-        )  # Shape (batch, head_num, receptive_field)
-        att_pos = F.softmax(att_pos, dim=-1)  # Shape (batch, head_num, receptive_field)
-        y_pos = torch.einsum(
-            "bhr, hrn -> bhn", att_pos, self.att_values
-        )  # Shape (batch, head_num, head_size)
-        y_pos = y_pos.reshape(
-            batch, self.emb_dim
-        )  # Re-assemble all head outputs side by side. Shape (batch, emb_dim)
+        )
+        # Shape (batch, head_num, receptive_field)
+        att_pos = F.softmax(att_pos, dim=-1)
+        # Shape (batch, head_num, head_size)
+        y_pos = torch.einsum("bhr, hrn -> bhn", att_pos, self.att_values)
+        # Re-assemble all head outputs side by side. Shape (batch, emb_dim)
+        y_pos = y_pos.reshape(batch, self.emb_dim)
 
+        # Shape (batch, head_num, receptive_field)
         att_neg = torch.einsum("bhn, bhrn -> bhr", q_neg, k_neg) * (
             1.0 / sqrt(self.head_size)
-        )  # Shape (batch, head_num, receptive_field)
-        att_neg = F.softmax(att_neg, dim=-1)  # Shape (batch, head_num, receptive_field)
-        y_neg = torch.einsum(
-            "bhr, hrn -> bhn", att_neg, self.att_values
-        )  # Shape (batch, head_num, head_size)
-        y_neg = y_neg.reshape(
-            batch, self.emb_dim
-        )  # Re-assemble all head outputs side by side. Shape (batch, emb_dim)
+        )
+        # Shape (batch, head_num, receptive_field)
+        att_neg = F.softmax(att_neg, dim=-1)
+        # Shape (batch, head_num, head_size)
+        y_neg = torch.einsum("bhr, hrn -> bhn", att_neg, self.att_values)
+        # Re-assemble all head outputs side by side. Shape (batch, emb_dim)
+        y_neg = y_neg.reshape(batch, self.emb_dim)
 
         # add positive and negative outputs to the Memory State
         self.state.state_transition(y_pos.unsqueeze(-2), y_pos.unsqueeze(-2))
