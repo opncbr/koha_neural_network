@@ -63,7 +63,7 @@ class KohaBlock(torch.nn.Module):
 
         self.layer_optimizer = self.configure_optimizer(config)
         self.state = State(config.window_size)
-        self._initialize_parameters()
+        self.apply(self._initialize_parameters)
 
     def _initialize_parameters(self, module):
         if isinstance(module, Parameter):
