@@ -2,7 +2,7 @@ import torch
 from torch.nn import Embedding
 from math import sqrt
 from .config import KohaNetworkConfig, KohaBlockConfig
-from koha_block import KohaBlock
+from .koha_block import KohaBlock
 
 
 class KohaNetwork(torch.nn.Module):
