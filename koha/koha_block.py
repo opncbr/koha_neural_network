@@ -25,10 +25,10 @@ class State:
             self.neg_past = self.neg_past.narrow(-2, 1, self.window_size)
 
     def get_positive_samples(self):
-        raise NotImplementedError
+        return self.pos_past @ self.pos_past.transpose(-1, -2)
 
     def get_negative_samples(self):
-        raise NotImplementedError
+        return self.pos_past @ self.neg_past.transpose(-1, -2)
 
 
 class KohaBlock(torch.nn.Module):
@@ -139,18 +139,13 @@ class KohaBlock(torch.nn.Module):
         return y_pos.detach()
 
     def loss(self):
-        positive_loss, negative_loss = 0, 0
         # compute positive loss
-        context, target = self.state.get_positive_samples()
-        if context != None:
-            out = (context * target).sum(dim=-1).view(-1)
-            positive_loss = -torch.log(torch.sigmoid(out) + self.EPS).mean()
+        out = self.state.get_positive_samples().sum(dim=-1).view(-1)
+        positive_loss = -torch.log(torch.sigmoid(out) + self.EPS).mean()
 
         # compute negative loss
-        context, target = self.state.get_negative_samples()
-        if context != None:
-            out = (context * target).sum(dim=-1).view(-1)
-            negative_loss = -torch.log(1 - torch.sigmoid(out) + self.EPS).mean()
+        out = self.state.get_negative_samples().sum(dim=-1).view(-1)
+        negative_loss = -torch.log(1 - torch.sigmoid(out) + self.EPS).mean()
 
         return positive_loss + negative_loss
 
