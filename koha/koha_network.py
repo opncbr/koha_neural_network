@@ -59,5 +59,7 @@ class KohaNetwork(torch.nn.Module):
         y = []
         for block_ind, block in enumerate(self.koha_blocks):
             x, z = X[block_ind], Z[block_ind]
+            if block_ind > 0:
+                x = x.detach()
             y = block(x, z)
             self.network_state[:, :, block_ind] = y
