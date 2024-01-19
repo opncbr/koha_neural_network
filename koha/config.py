@@ -20,5 +20,5 @@ class KohaBlockConfig:
 class KohaNetworkConfig:
     lr: float = 0.01  # signature learning rate
     vocab_size: int = 50256  # size of vocabulary
-    emb_dim: int = 100  # dimensionality of vocabulary embeddings
+    emb_dim: int = 128  # dimensionality of vocabulary embeddings
     context: int = 10
