@@ -38,6 +38,7 @@ class KohaBlock(torch.nn.Module):
         self.emb_dim = config.emb_dim
         self.head_num = config.head_num
         self.head_size = config.emb_dim // config.head_num
+        assert self.emb_dim % self.head_num == 0
         self.receptive_field = config.receptive_field
         self.EPS = 1e-15
 
