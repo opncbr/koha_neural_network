@@ -43,7 +43,7 @@ class KohaNetwork(torch.nn.Module):
         assert (
             self.network_state is not None
         ), "initialize_state must be called before using forward"
-        input = self.embeddings(input_indices)
+        input = self.embeddings(input_indices).squeeze(1)
         X = torch.cat(
             [
                 input.unsqueeze(0),
