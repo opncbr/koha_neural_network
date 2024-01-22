@@ -1,16 +1,17 @@
-from koha.config import KohaInputLayerConfig
-from koha.koha_input_layer import KohaInputLayer
+from koha.koha_network import KohaNetwork
+from koha.config import KohaBlockConfig, KohaNetworkConfig
+
 from torch.utils.data import DataLoader
 import torch
 import numpy as np
 import os
 from tqdm import tqdm
 
-device = 'mps' #'cuda' if torch.cuda.is_available() else 'cpu'
+device = "mps"  #'cuda' if torch.cuda.is_available() else 'cpu'
 dataset = "shakespeare"
-saved_model_dir = 'saved_models/koha_input_model'
+saved_model_dir = "saved_models/koha_model"
 sequence_length = 100
-batch_size = 1
+batch_size = 16
 shuffle = True
 num_workers = 0
 
@@ -18,7 +19,7 @@ num_workers = 0
 class TextDataset(torch.utils.data.Dataset):
     def __init__(self, dataset, block_size, train):
         self.data = np.memmap(
-            os.path.join(f'data/{dataset}', "train.bin" if train else "val.bin"),
+            os.path.join(f"data/{dataset}", "train.bin" if train else "val.bin"),
             dtype=np.uint16,
             mode="r",
         )
@@ -35,24 +36,28 @@ class TextDataset(torch.utils.data.Dataset):
         return x, y
 
 
-data = TextDataset(dataset = dataset, block_size = sequence_length, train=True)
-data_loader = DataLoader(data, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+data = TextDataset(dataset=dataset, block_size=sequence_length, train=True)
+data_loader = DataLoader(
+    data, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers
+)
 
-config = KohaInputLayerConfig()
-koha_input_layer = KohaInputLayer(config)
+network_config = KohaNetworkConfig()
+block_config = KohaBlockConfig()
+koha_network = KohaNetwork(network_config, block_config)
+
 
 def train(model):
     model.train()
-    total_loss = 0
+    # total_loss = 0
     for x, _ in tqdm(data_loader):
-        x = x.squeeze()
-        model.clear_previous_winners()
-        for token in x:
-            _, loss = model(token.item())
-            total_loss += loss.item()
-    return total_loss / len(data_loader)
+        model.initialize_state(batch_size)
+        for i in range(sequence_length):
+            input = x[:, i].unsqueeze(1)
+            losses = model(input)
+            # total_loss += loss.item()
+    # return total_loss / len(data_loader)
 
 
-train(koha_input_layer)
+train(koha_network)
 
-torch.save(koha_input_layer.state_dict(), saved_model_dir)
+# torch.save(koha_input_layer.state_dict(), saved_model_dir)

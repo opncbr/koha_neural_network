@@ -57,9 +57,13 @@ class KohaNetwork(torch.nn.Module):
             .transpose(-1, -2)
         )
         y = []
+        # losses = []
         for block_ind, block in enumerate(self.koha_blocks):
             x, z = X[block_ind], Z[block_ind]
             if block_ind > 0:
                 x = x.detach()
             y = block(x, z)
+            # losses.append(loss)
             self.network_state[:, :, block_ind] = y
+        # XXX TODO: add logic to return block outputs for MLP blocks / other Koha networks
+        # return losses
