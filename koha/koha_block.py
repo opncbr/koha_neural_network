@@ -9,23 +9,18 @@ import inspect
 DEBUG = getenv("DEBUG", 0)
 
 
-class State:
-    def __init__(self, window_size: int):
-        self.window_size = window_size
-        self.pos_past: torch.Tensor | None = None
-        self.neg_past: torch.Tensor | None = None
+class State(torch.nn.Module):
+    def __init__(self, config: KohaBlockConfig):
+        super().__init__()
+        self.idx = 0
+        self.pos_past = Parameter(torch.empty(16, config.window_size, config.emb_dim))
+        self.neg_past = Parameter(torch.empty(16, config.window_size, config.emb_dim))
 
     def state_transition(self, pos: torch.Tensor, neg: torch.Tensor):
-        self.pos_past = torch.cat(
-            [self.pos_past, pos] if self.pos_past is not None else [pos], dim=-2
-        )
-        self.neg_past = torch.cat(
-            [self.neg_past, neg] if self.neg_past is not None else [neg], dim=-2
-        )
-
-        if self.neg_past.size(-2) > self.window_size:
-            self.pos_past = self.pos_past.narrow(-2, 1, self.window_size)
-            self.neg_past = self.neg_past.narrow(-2, 1, self.window_size)
+        with torch.no_grad():
+            self.pos_past[:, self.idx, :] = pos
+            self.neg_past[:, self.idx, :] = neg
+            self.idx = (self.idx + 1) % self.pos_past.size(1)
 
     def get_positive_samples(self):
         return self.pos_past @ self.pos_past.transpose(-1, -2)
@@ -66,7 +61,7 @@ class KohaBlock(torch.nn.Module):
         )  # Shape (head_num, receptive_field, head_size)
 
         self.layer_optimizer = self.configure_optimizer(config)
-        self.state = State(config.window_size)
+        self.state = State(config)
         self.apply(self._initialize_parameters)
 
     def _initialize_parameters(self, module):
@@ -131,7 +126,7 @@ class KohaBlock(torch.nn.Module):
         y_neg = y_neg.reshape(batch, self.emb_dim)
 
         # add positive and negative outputs to the Memory State
-        self.state.state_transition(y_pos.unsqueeze(-2), y_pos.unsqueeze(-2))
+        self.state.state_transition(y_pos, y_pos)
 
         # perform backprop
         self.layer_optimizer.zero_grad()
