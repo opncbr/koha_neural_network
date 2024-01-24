@@ -73,7 +73,7 @@ class KohaBlock(torch.nn.Module):
             torch.nn.init.normal_(module.data, mean=0.0, std=0.02)
 
     # incomplete forward
-    def forward(self, x, z):
+    def forward(self, x, z, mask=None):
         batch = x.size(0)
 
         # compute positive and negative outputs
@@ -111,6 +111,8 @@ class KohaBlock(torch.nn.Module):
         att_pos = torch.einsum("bhn, bhrn -> bhr", q_pos, k_pos) * (
             1.0 / sqrt(self.head_size)
         )
+        if mask is not None:
+            att_pos = att_pos.masked_fill(mask == 0, float("-inf"))
         # Shape (batch, head_num, receptive_field)
         att_pos = F.softmax(att_pos, dim=-1)
         # Shape (batch, head_num, head_size)
@@ -122,6 +124,8 @@ class KohaBlock(torch.nn.Module):
         att_neg = torch.einsum("bhn, bhrn -> bhr", q_neg, k_neg) * (
             1.0 / sqrt(self.head_size)
         )
+        if mask is not None:
+            att_neg = att_neg.masked_fill(mask == 0, float("-inf"))
         # Shape (batch, head_num, receptive_field)
         att_neg = F.softmax(att_neg, dim=-1)
         # Shape (batch, head_num, head_size)
