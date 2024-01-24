@@ -42,12 +42,12 @@ class KohaNetwork(torch.nn.Module):
         for block in self.koha_blocks:
             block.initialize_state(batch)
 
-    def _mask(self, seq_iter: int):
-        remainder = self.context - seq_iter
+    def _mask(self):
+        remainder = self.context - self.unmask
         mask = torch.cat(
             [
                 torch.flip(
-                    torch.tril(torch.ones(seq_iter, self.receptive_field)), dims=[0]
+                    torch.tril(torch.ones(self.unmask, self.receptive_field)), dims=[0]
                 ),
                 torch.zeros(remainder, self.receptive_field),
             ]
@@ -72,13 +72,17 @@ class KohaNetwork(torch.nn.Module):
             .view(-1, batch, self.emb_dim, self.receptive_field)
             .transpose(-1, -2)
         )
+        mask = self._mask()
+        self.unmask += 1
+
         y = []
         # losses = []
         for block_ind, block in enumerate(self.koha_blocks):
             x, z = X[block_ind], Z[block_ind]
+            m = mask[block_ind].view(1, 1, self.receptive_field)
             if block_ind > 0:
                 x = x.detach()
-            y = block(x, z, mask)
+            y = block(x, z, m)
             # losses.append(loss)
             self.network_state[:, :, block_ind] = y
         # XXX TODO: add logic to return block outputs for MLP blocks / other Koha networks
