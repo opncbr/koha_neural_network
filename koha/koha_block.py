@@ -9,14 +9,14 @@ import inspect
 DEBUG = getenv("DEBUG", 0)
 
 
-class State(torch.nn.Module):
+class Sampler(torch.nn.Module):
     def __init__(self, config: KohaBlockConfig):
         super().__init__()
         self.idx = 0
         self.pos_past = Parameter(torch.empty(16, config.window_size, config.emb_dim))
         self.neg_past = Parameter(torch.empty(16, config.window_size, config.emb_dim))
 
-    def state_transition(self, pos: torch.Tensor, neg: torch.Tensor):
+    def sample_transition(self, pos: torch.Tensor, neg: torch.Tensor):
         with torch.no_grad():
             self.pos_past[:, self.idx, :] = pos
             self.neg_past[:, self.idx, :] = neg
@@ -61,7 +61,7 @@ class KohaBlock(torch.nn.Module):
         )  # Shape (head_num, receptive_field, head_size)
 
         self.layer_optimizer = self.configure_optimizer(config)
-        self.state = State(config)
+        self.sampler = Sampler(config)
         self.apply(self._initialize_parameters)
 
     def _initialize_parameters(self, module):
@@ -125,8 +125,8 @@ class KohaBlock(torch.nn.Module):
         # Re-assemble all head outputs side by side. Shape (batch, emb_dim)
         y_neg = y_neg.reshape(batch, self.emb_dim)
 
-        # add positive and negative outputs to the Memory State
-        self.state.state_transition(y_pos, y_pos)
+        # add positive and negative outputs to the Sampler
+        self.sampler.sample_transition(y_pos, y_pos)
 
         # perform backprop
         self.layer_optimizer.zero_grad()
@@ -139,11 +139,11 @@ class KohaBlock(torch.nn.Module):
 
     def loss(self):
         # compute positive loss
-        out = self.state.get_positive_samples().sum(dim=-1).view(-1)
+        out = self.sampler.get_positive_samples().sum(dim=-1).view(-1)
         positive_loss = -torch.log(torch.sigmoid(out) + self.EPS).mean()
 
         # compute negative loss
-        out = self.state.get_negative_samples().sum(dim=-1).view(-1)
+        out = self.sampler.get_negative_samples().sum(dim=-1).view(-1)
         negative_loss = -torch.log(1 - torch.sigmoid(out) + self.EPS).mean()
 
         return positive_loss + negative_loss
