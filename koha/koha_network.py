@@ -37,6 +37,8 @@ class KohaNetwork(torch.nn.Module):
         self.network_state = torch.zeros(
             batch, self.emb_dim, self.context + self.receptive_field - 1
         )
+        for block in self.koha_blocks:
+            block.initialize_state(batch)
 
     def forward(self, input_indices):
         batch = input_indices.size(0)

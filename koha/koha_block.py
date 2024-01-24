@@ -28,6 +28,10 @@ class Sampler(torch.nn.Module):
     def get_negative_samples(self):
         return self.pos_past @ self.neg_past.transpose(-1, -2)
 
+    # XXX: must be implemented
+    def initialize_state(self, batch):
+        return
+
 
 class KohaBlock(torch.nn.Module):
     def __init__(self, config: KohaBlockConfig, first_layer: bool):
