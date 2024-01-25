@@ -9,24 +9,26 @@ import inspect
 DEBUG = getenv("DEBUG", 0)
 
 
-class Sampler(torch.nn.Module):
+class Sampler:
     def __init__(self, config: KohaBlockConfig):
-        super().__init__()
         self.idx = 0
-        self.pos_past = Parameter(torch.empty(16, config.window_size, config.emb_dim))
-        self.neg_past = Parameter(torch.empty(16, config.window_size, config.emb_dim))
+        self.pos_past = torch.empty(
+            16, config.window_size, config.emb_dim, requires_grad=False
+        )
+        self.neg_past = torch.empty(
+            16, config.window_size, config.emb_dim, requires_grad=False
+        )
 
     def sample_transition(self, pos: torch.Tensor, neg: torch.Tensor):
-        with torch.no_grad():
-            self.pos_past[:, self.idx, :] = pos
-            self.neg_past[:, self.idx, :] = neg
-            self.idx = (self.idx + 1) % self.pos_past.size(1)
+        self.pos_past[:, self.idx, :] = pos.detach()
+        self.neg_past[:, self.idx, :] = neg.detach()
+        self.idx = (self.idx + 1) % self.pos_past.size(1)
 
     def get_positive_samples(self):
-        return self.pos_past @ self.pos_past.transpose(-1, -2)
+        return self.pos_past
 
     def get_negative_samples(self):
-        return self.pos_past @ self.neg_past.transpose(-1, -2)
+        return self.neg_past
 
     # XXX: must be implemented
     def initialize_state(self, batch):
@@ -134,27 +136,16 @@ class KohaBlock(torch.nn.Module):
         y_neg = y_neg.reshape(batch, self.emb_dim)
 
         # add positive and negative outputs to the Sampler
-        self.sampler.sample_transition(y_pos, y_pos)
-
-        # perform backprop
-        self.layer_optimizer.zero_grad()
-        loss = self.loss()
-        loss.backward()
-        self.layer_optimizer.step()
-
-        # return positive output
-        return y_pos.detach()
-
-    def loss(self):
-        # compute positive loss
-        out = self.sampler.get_positive_samples().sum(dim=-1).view(-1)
+        self.sampler.sample_transition(y_pos, y_neg)
+        out = (y_pos  @ self.sampler.get_positive_samples().transpose(-1,-2)).sum(dim=-1).view(-1)
         positive_loss = -torch.log(torch.sigmoid(out) + self.EPS).mean()
-
         # compute negative loss
-        out = self.sampler.get_negative_samples().sum(dim=-1).view(-1)
+        out = (y_pos @ self.sampler.get_negative_samples().transpose(-1,-2)).sum(dim=-1).view(-1)
         negative_loss = -torch.log(1 - torch.sigmoid(out) + self.EPS).mean()
 
-        return positive_loss + negative_loss
+        loss = positive_loss + negative_loss
+        # return positive output
+        return loss, y_pos.detach()
 
     def configure_optimizer(self, config: KohaBlockConfig):
         # start with all of the candidate parameters

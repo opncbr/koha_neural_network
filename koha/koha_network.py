@@ -45,15 +45,19 @@ class KohaNetwork(torch.nn.Module):
     def _mask(self):
         extended_context = self.context + self.receptive_field - 1
         remainder = extended_context - self.mask_int
-        mask = torch.cat(
-            [
-                torch.flip(
-                    torch.tril(torch.ones(self.mask_int, self.receptive_field + 1)),
-                    dims=[0],
-                ),
-                torch.zeros(remainder, self.receptive_field + 1),
-            ]
-        ).to(torch.int)
+        mask = (
+            torch.cat(
+                [
+                    torch.flip(
+                        torch.tril(torch.ones(self.mask_int, self.receptive_field + 1)),
+                        dims=[0],
+                    ),
+                    torch.zeros(remainder, self.receptive_field + 1),
+                ]
+            )
+            .detach()
+            .to(torch.int)
+        )
         return mask
 
     def _increment_mask(self):
@@ -85,14 +89,19 @@ class KohaNetwork(torch.nn.Module):
         self._increment_mask()
 
         y = []
-        # losses = []
+        losses = []
         for block_ind, block in enumerate(self.koha_blocks):
             x, z = X[block_ind], Z[block_ind]
             m = mask[block_ind].view(1, 1, self.receptive_field + 1)
             if block_ind > 0:
                 x = x.detach()
-            y = block(x, z, m)
-            # losses.append(loss)
+
+            loss, y = block(x, z, m)
+            block.layer_optimizer.zero_grad()
+            loss.backward()
+            block.layer_optimizer.step()
             self.network_state[:, :, block_ind] = y
+
+            losses.append(loss.item())
         # XXX TODO: add logic to return block outputs for MLP blocks / other Koha networks
         # return losses
