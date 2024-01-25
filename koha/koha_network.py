@@ -48,10 +48,10 @@ class KohaNetwork(torch.nn.Module):
         mask = torch.cat(
             [
                 torch.flip(
-                    torch.tril(torch.ones(self.mask_int, self.receptive_field)),
+                    torch.tril(torch.ones(self.mask_int, self.receptive_field + 1)),
                     dims=[0],
                 ),
-                torch.zeros(remainder, self.receptive_field),
+                torch.zeros(remainder, self.receptive_field + 1),
             ]
         ).to(torch.int)
         return mask
@@ -78,6 +78,9 @@ class KohaNetwork(torch.nn.Module):
             .view(-1, batch, self.emb_dim, self.receptive_field)
             .transpose(-1, -2)
         )
+        # add X to Z. Needed for keys
+        Z = torch.cat([X.unsqueeze(-2), Z], dim=-2)
+
         mask = self._mask()
         self._increment_mask()
 
@@ -85,7 +88,7 @@ class KohaNetwork(torch.nn.Module):
         # losses = []
         for block_ind, block in enumerate(self.koha_blocks):
             x, z = X[block_ind], Z[block_ind]
-            m = mask[block_ind].view(1, 1, self.receptive_field)
+            m = mask[block_ind].view(1, 1, self.receptive_field + 1)
             if block_ind > 0:
                 x = x.detach()
             y = block(x, z, m)

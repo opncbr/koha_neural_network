@@ -6,9 +6,9 @@ class KohaBlockConfig:
     emb_dim: int = 128  # embedding dimension
     head_num: int = 8  # number of heads
     receptive_field = (
-        10  # number of connections that a Koha block has to other Koha blocks
+        9  # number of connections that a Koha block has to other Koha blocks
     )
-    window_size: int = 10  # temporal window used for positve and negative sampling
+    window_size: int = 5  # temporal window used for positve and negative sampling
     weight_decay: float = 1e-1
     learning_rate: float = 6e-4
     beta1: float = 0.9
