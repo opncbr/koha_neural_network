@@ -9,29 +9,28 @@ import inspect
 DEBUG = getenv("DEBUG", 0)
 
 
-class State:
-    def __init__(self, window_size: int):
-        self.window_size = window_size
-        self.pos_past: torch.Tensor | None = None
-        self.neg_past: torch.Tensor | None = None
+class Sampler(torch.nn.Module):
+    def __init__(self, config: KohaBlockConfig):
+        super().__init__()
+        self.idx = 0
+        self.pos_past = Parameter(torch.empty(16, config.window_size, config.emb_dim))
+        self.neg_past = Parameter(torch.empty(16, config.window_size, config.emb_dim))
 
-    def state_transition(self, pos: torch.Tensor, neg: torch.Tensor):
-        self.pos_past = torch.cat(
-            [self.pos_past, pos] if self.pos_past is not None else [pos], dim=-2
-        )
-        self.neg_past = torch.cat(
-            [self.neg_past, neg] if self.neg_past is not None else [neg], dim=-2
-        )
-
-        if self.neg_past.size(-2) > self.window_size:
-            self.pos_past = self.pos_past.narrow(-2, 1, self.window_size)
-            self.neg_past = self.neg_past.narrow(-2, 1, self.window_size)
+    def sample_transition(self, pos: torch.Tensor, neg: torch.Tensor):
+        with torch.no_grad():
+            self.pos_past[:, self.idx, :] = pos
+            self.neg_past[:, self.idx, :] = neg
+            self.idx = (self.idx + 1) % self.pos_past.size(1)
 
     def get_positive_samples(self):
         return self.pos_past @ self.pos_past.transpose(-1, -2)
 
     def get_negative_samples(self):
         return self.pos_past @ self.neg_past.transpose(-1, -2)
+
+    # XXX: must be implemented
+    def initialize_state(self, batch):
+        return
 
 
 class KohaBlock(torch.nn.Module):
@@ -66,7 +65,7 @@ class KohaBlock(torch.nn.Module):
         )  # Shape (head_num, receptive_field, head_size)
 
         self.layer_optimizer = self.configure_optimizer(config)
-        self.state = State(config.window_size)
+        self.sampler = Sampler(config)
         self.apply(self._initialize_parameters)
 
     def _initialize_parameters(self, module):
@@ -74,7 +73,7 @@ class KohaBlock(torch.nn.Module):
             torch.nn.init.normal_(module.data, mean=0.0, std=0.02)
 
     # incomplete forward
-    def forward(self, x, z):
+    def forward(self, x, z, mask=None):
         batch = x.size(0)
 
         # compute positive and negative outputs
@@ -112,6 +111,8 @@ class KohaBlock(torch.nn.Module):
         att_pos = torch.einsum("bhn, bhrn -> bhr", q_pos, k_pos) * (
             1.0 / sqrt(self.head_size)
         )
+        if mask is not None:
+            att_pos = att_pos.masked_fill(mask == 0, float("-inf"))
         # Shape (batch, head_num, receptive_field)
         att_pos = F.softmax(att_pos, dim=-1)
         # Shape (batch, head_num, head_size)
@@ -123,6 +124,8 @@ class KohaBlock(torch.nn.Module):
         att_neg = torch.einsum("bhn, bhrn -> bhr", q_neg, k_neg) * (
             1.0 / sqrt(self.head_size)
         )
+        if mask is not None:
+            att_neg = att_neg.masked_fill(mask == 0, float("-inf"))
         # Shape (batch, head_num, receptive_field)
         att_neg = F.softmax(att_neg, dim=-1)
         # Shape (batch, head_num, head_size)
@@ -130,8 +133,8 @@ class KohaBlock(torch.nn.Module):
         # Re-assemble all head outputs side by side. Shape (batch, emb_dim)
         y_neg = y_neg.reshape(batch, self.emb_dim)
 
-        # add positive and negative outputs to the Memory State
-        self.state.state_transition(y_pos.unsqueeze(-2), y_pos.unsqueeze(-2))
+        # add positive and negative outputs to the Sampler
+        self.sampler.sample_transition(y_pos, y_pos)
 
         # perform backprop
         self.layer_optimizer.zero_grad()
@@ -144,11 +147,11 @@ class KohaBlock(torch.nn.Module):
 
     def loss(self):
         # compute positive loss
-        out = self.state.get_positive_samples().sum(dim=-1).view(-1)
+        out = self.sampler.get_positive_samples().sum(dim=-1).view(-1)
         positive_loss = -torch.log(torch.sigmoid(out) + self.EPS).mean()
 
         # compute negative loss
-        out = self.state.get_negative_samples().sum(dim=-1).view(-1)
+        out = self.sampler.get_negative_samples().sum(dim=-1).view(-1)
         negative_loss = -torch.log(1 - torch.sigmoid(out) + self.EPS).mean()
 
         return positive_loss + negative_loss
