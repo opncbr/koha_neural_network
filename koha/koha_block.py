@@ -46,25 +46,35 @@ class KohaBlock(torch.nn.Module):
         self.receptive_field = config.receptive_field + 1
         self.EPS = 1e-15
 
-        self.query_key = Parameter(
+        self.R_q = Parameter(
             torch.empty((self.head_num, self.head_size, self.emb_dim))
         )  # Shape (head_num, head_size, emb_dim)
-        self.query_value = Parameter(
+        self.W_q = Parameter(
             torch.empty((self.head_num, self.head_size, self.head_size))
         )  # Shape (head_num, head_size, head_size)
-        self.key_keys = Parameter(
+        self.R_k = Parameter(
             torch.empty(
                 (self.head_num, self.receptive_field, self.head_size, self.emb_dim)
             )
         )  # Shape (head_num, receptive_field, head_size, emb_dim)
-        self.key_values = Parameter(
+        self.W_k = Parameter(
             torch.empty(
                 (self.head_num, self.receptive_field, self.head_size, self.head_size)
             )
         )  # Shape (head_num, receptive_field, head_size, head_size)
-        self.att_values = Parameter(
-            torch.empty((self.head_num, self.receptive_field, self.head_size))
-        )  # Shape (head_num, receptive_field, head_size)
+        self.R_v = Parameter(
+            torch.empty(
+                (self.head_num, self.receptive_field, self.head_size, self.emb_dim)
+            )
+        )  # Shape (head_num, receptive_field, head_size, emb_dim)
+        self.W_v = Parameter(
+            torch.empty(
+                (self.head_num, self.receptive_field, self.head_size, self.head_size)
+            )
+        )  # Shape (head_num, receptive_field, head_size, head_size)
+        self.W_o = Parameter(
+            torch.empty((self.emb_dim, self.emb_dim))
+        )  # Shape (emb_dim, emb_dim)
 
         self.layer_optimizer = self.configure_optimizer(config)
         self.sampler = Sampler(config)
@@ -74,78 +84,62 @@ class KohaBlock(torch.nn.Module):
         if isinstance(module, Parameter):
             torch.nn.init.normal_(module.data, mean=0.0, std=0.02)
 
-    # incomplete forward
-    def forward(self, x, z, mask=None):
+    def positive_pass(self, x, z, mask):
         batch = x.size(0)
 
-        # compute positive and negative outputs
+        Q = torch.einsum("be, hne -> bhn", x, self.R_q)
+        Q = F.softmax(Q, dim=-1)
+        Q = torch.einsum("bhn, hnm -> bhm", Q, self.W_q)
+        # Q: Shape (batch, head_num, head_size)
 
-        # Shape (batch, head_num, head_size)
-        q = torch.einsum("be, hne -> bhn", x, self.query_key)
-        # Shape (batch, head_num, receptive_field, head_size)
-        q_pos = F.softmax(q, dim=-1)
-        if self.first_layer:
-            # Shape (batch, head_num, receptive_field, head_size)
-            q_neg = F.softmax(-q, dim=-1)
-        else:
-            with torch.no_grad():
-                # Shape (batch, head_num, receptive_field, head_size)
-                q_neg = F.softmax(-q, dim=-1)
-        # n and m have the same dim
-        q_pos = torch.einsum("bhn, hnm -> bhm", q_pos, self.query_value)
-        # n and m have the same dim
-        q_neg = torch.einsum("bhn, hnm -> bhm", q_neg, self.query_value)
+        K = torch.einsum("bre, hrne -> bhrn", z, self.R_k)
+        K = F.softmax(K, dim=-1)
+        K = torch.einsum("bhrn, hrnm -> bhrm", K, self.W_k)
+        # K: Shape (batch, head_num, receptive_field, head_size)
 
-        # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
-        k = torch.einsum("bre, hrne -> bhrn", z, self.key_keys)
-        # Shape (batch, receptive_field, emb_dim)
-        k_pos = F.softmax(k, dim=-1)
-        if self.first_layer:
-            k_neg = k_pos
-        else:
-            k_neg = k_pos.detach()
-        # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
-        k_pos = torch.einsum("bhrn, hrnm -> bhrm", k_pos, self.key_values)
-        # Shape (batch, receptive_field, emb_dim). e and i have the same dim within the einsum
-        k_neg = torch.einsum("bhrn, hrnm -> bhrm", k_neg, self.key_values)
+        V = torch.einsum("bre, hrne -> bhrn", z, self.R_v)
+        V = F.softmax(V, dim=-1)
+        V = torch.einsum("bhrn, hrnm -> bhrm", V, self.W_v)
+        # V: Shape (batch, head_num, receptive_field, head_size)
 
-        # Shape (batch, head_num, receptive_field)
-        att_pos = torch.einsum("bhn, bhrn -> bhr", q_pos, k_pos) * (
+        att = torch.einsum("bhn, bhrn -> bhr", Q, K) * (
             1.0 / sqrt(self.head_size)
         )
-        if mask is not None:
-            att_pos = att_pos.masked_fill(mask == 0, float("-inf"))
-        # Shape (batch, head_num, receptive_field)
-        att_pos = F.softmax(att_pos, dim=-1)
-        # Shape (batch, head_num, head_size)
-        y_pos = torch.einsum("bhr, hrn -> bhn", att_pos, self.att_values)
-        # Re-assemble all head outputs side by side. Shape (batch, emb_dim)
-        y_pos = y_pos.reshape(batch, self.emb_dim)
+        att = att.masked_fill(mask == 0, float("-inf"))
+        att = F.softmax(att, dim=-1)
+        # att: Shape (batch, head_num, receptive_field)
 
-        # Shape (batch, head_num, receptive_field)
-        att_neg = torch.einsum("bhn, bhrn -> bhr", q_neg, k_neg) * (
-            1.0 / sqrt(self.head_size)
-        )
-        if mask is not None:
-            att_neg = att_neg.masked_fill(mask == 0, float("-inf"))
-        # Shape (batch, head_num, receptive_field)
-        att_neg = F.softmax(att_neg, dim=-1)
-        # Shape (batch, head_num, head_size)
-        y_neg = torch.einsum("bhr, hrn -> bhn", att_neg, self.att_values)
-        # Re-assemble all head outputs side by side. Shape (batch, emb_dim)
-        y_neg = y_neg.reshape(batch, self.emb_dim)
+        y = torch.einsum("bhr, hrn -> bhn", att, V)
+        y = y.reshape(batch, self.emb_dim) # Re-assemble all head outputs side by side
+        y = att @ self.W_o
+        # y: Shape (batch, emb_dim)
+
+
+
+    # incomplete forward
+    def forward(self, x, z, mask):
+        y_pos, y_neg = 
 
         # add positive and negative outputs to the Sampler
         self.sampler.sample_transition(y_pos, y_neg)
-        out = (y_pos  @ self.sampler.get_positive_samples().transpose(-1,-2)).sum(dim=-1).view(-1)
+        out = (
+            (y_pos @ self.sampler.get_positive_samples().transpose(-1, -2))
+            .sum(dim=-1)
+            .view(-1)
+        )
         positive_loss = -torch.log(torch.sigmoid(out) + self.EPS).mean()
         # compute negative loss
-        out = (y_pos @ self.sampler.get_negative_samples().transpose(-1,-2)).sum(dim=-1).view(-1)
+        out = (
+            (y_pos @ self.sampler.get_negative_samples().transpose(-1, -2))
+            .sum(dim=-1)
+            .view(-1)
+        )
         negative_loss = -torch.log(1 - torch.sigmoid(out) + self.EPS).mean()
 
         loss = positive_loss + negative_loss
         # return positive output
         return loss, y_pos.detach()
+
 
     def configure_optimizer(self, config: KohaBlockConfig):
         # start with all of the candidate parameters
