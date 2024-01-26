@@ -107,9 +107,9 @@ class KohaBlock(torch.nn.Module):
         att = F.softmax(att, dim=-1)
         # att: Shape (batch, head_num, receptive_field)
 
-        y = torch.einsum("bhr, hrn -> bhn", att, V)
+        y = torch.einsum("bhr, bhrn -> bhn", att, V)
         y = y.reshape(batch, self.emb_dim)  # Re-assemble all head outputs side by side
-        y = att @ self.W_o
+        y = y @ self.W_o
         # y: Shape (batch, emb_dim)
 
         return y
