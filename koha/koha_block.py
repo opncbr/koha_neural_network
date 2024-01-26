@@ -11,13 +11,7 @@ DEBUG = getenv("DEBUG", 0)
 
 class Sampler:
     def __init__(self, config: KohaBlockConfig):
-        self.idx = 0
-        self.pos_past = torch.empty(
-            16, config.window_size, config.emb_dim, requires_grad=False
-        )
-        self.neg_past = torch.empty(
-            16, config.window_size, config.emb_dim, requires_grad=False
-        )
+        self.config = config
 
     def sample_transition(self, pos: torch.Tensor, neg: torch.Tensor):
         self.pos_past[:, self.idx, :] = pos.detach()
@@ -32,7 +26,13 @@ class Sampler:
 
     # XXX: must be implemented
     def initialize_state(self, batch):
-        return
+        self.idx = 0
+        self.pos_past = torch.zeros(
+            batch, self.config.window_size, self.config.emb_dim, requires_grad=False
+        )
+        self.neg_past = torch.zeros(
+            batch, self.config.window_size, self.config.emb_dim, requires_grad=False
+        )
 
 
 class KohaBlock(torch.nn.Module):
