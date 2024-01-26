@@ -56,7 +56,7 @@ class KohaNetwork(torch.nn.Module):
                 ]
             )
             .detach()
-            .to(torch.int)
+            .to(torch.bool)
         )
         return mask
 
@@ -95,6 +95,7 @@ class KohaNetwork(torch.nn.Module):
             m = mask[block_ind].view(1, 1, self.receptive_field + 1)
             if block_ind > 0:
                 x = x.detach()
+                z = z.detach()
 
             loss, y = block(x, z, m)
             block.layer_optimizer.zero_grad()
@@ -104,4 +105,4 @@ class KohaNetwork(torch.nn.Module):
 
             losses.append(loss.item())
         # XXX TODO: add logic to return block outputs for MLP blocks / other Koha networks
-        # return losses
+        return losses
