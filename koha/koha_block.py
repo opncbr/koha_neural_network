@@ -24,7 +24,6 @@ class Sampler:
     def get_negative_scores(self, y):
         return (y @ self.neg_past.transpose(-1, -2)).sum(dim=-1).view(-1)
 
-    # XXX: must be implemented
     def initialize_state(self, batch):
         self.idx = 0
         self.pos_past = torch.zeros(
