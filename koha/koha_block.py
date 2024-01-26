@@ -24,11 +24,11 @@ class Sampler:
         self.neg_past[:, self.idx, :] = neg.detach()
         self.idx = (self.idx + 1) % self.pos_past.size(1)
 
-    def get_positive_samples(self):
-        return self.pos_past
+    def get_positive_scores(self, y):
+        return (y @ self.pos_past.transpose(-1, -2)).sum(dim=-1).view(-1)
 
-    def get_negative_samples(self):
-        return self.neg_past
+    def get_negative_scores(self, y):
+        return (y @ self.neg_past.transpose(-1, -2)).sum(dim=-1).view(-1)
 
     # XXX: must be implemented
     def initialize_state(self, batch):
@@ -114,7 +114,6 @@ class KohaBlock(torch.nn.Module):
 
         return y
 
-    # incomplete forward
     def forward(self, x, z, mask):
         y_pos = self.forward_pass(x, z, mask, True)
         y_neg = self.forward_pass(x, z, mask, False)
@@ -123,16 +122,8 @@ class KohaBlock(torch.nn.Module):
         self.sampler.sample_transition(y_pos, y_neg)
 
         # compute negative loss
-        pos_out = (
-            (y_pos @ self.sampler.get_positive_samples().transpose(-1, -2))
-            .sum(dim=-1)
-            .view(-1)
-        )
-        neg_out = (
-            (y_pos @ self.sampler.get_negative_samples().transpose(-1, -2))
-            .sum(dim=-1)
-            .view(-1)
-        )
+        pos_out = self.sampler.get_positive_scores(y_pos)
+        neg_out = self.sampler.get_negative_scores(y_pos)
 
         positive_loss = -torch.log(torch.sigmoid(pos_out) + self.EPS).mean()
         negative_loss = -torch.log(1 - torch.sigmoid(neg_out) + self.EPS).mean()
