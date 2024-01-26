@@ -84,11 +84,11 @@ class KohaBlock(torch.nn.Module):
         if isinstance(module, Parameter):
             torch.nn.init.normal_(module.data, mean=0.0, std=0.02)
 
-    def positive_pass(self, x, z, mask):
+    def forward_pass(self, x, z, mask, pos: bool):
         batch = x.size(0)
 
         Q = torch.einsum("be, hne -> bhn", x, self.R_q)
-        Q = F.softmax(Q, dim=-1)
+        Q = F.softmax(Q, dim=-1) if pos else F.softmax(-Q, dim=-1)
         Q = torch.einsum("bhn, hnm -> bhm", Q, self.W_q)
         # Q: Shape (batch, head_num, head_size)
 
@@ -102,23 +102,22 @@ class KohaBlock(torch.nn.Module):
         V = torch.einsum("bhrn, hrnm -> bhrm", V, self.W_v)
         # V: Shape (batch, head_num, receptive_field, head_size)
 
-        att = torch.einsum("bhn, bhrn -> bhr", Q, K) * (
-            1.0 / sqrt(self.head_size)
-        )
+        att = torch.einsum("bhn, bhrn -> bhr", Q, K) * (1.0 / sqrt(self.head_size))
         att = att.masked_fill(mask == 0, float("-inf"))
         att = F.softmax(att, dim=-1)
         # att: Shape (batch, head_num, receptive_field)
 
         y = torch.einsum("bhr, hrn -> bhn", att, V)
-        y = y.reshape(batch, self.emb_dim) # Re-assemble all head outputs side by side
+        y = y.reshape(batch, self.emb_dim)  # Re-assemble all head outputs side by side
         y = att @ self.W_o
         # y: Shape (batch, emb_dim)
 
-
+        return y
 
     # incomplete forward
     def forward(self, x, z, mask):
-        y_pos, y_neg = 
+        y_pos = self.forward_pass(x, z, mask, True)
+        y_neg = self.forward_pass(x, z, mask, False)
 
         # add positive and negative outputs to the Sampler
         self.sampler.sample_transition(y_pos, y_neg)
@@ -139,7 +138,6 @@ class KohaBlock(torch.nn.Module):
         loss = positive_loss + negative_loss
         # return positive output
         return loss, y_pos.detach()
-
 
     def configure_optimizer(self, config: KohaBlockConfig):
         # start with all of the candidate parameters
