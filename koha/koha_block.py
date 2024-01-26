@@ -102,7 +102,7 @@ class KohaBlock(torch.nn.Module):
         # V: Shape (batch, head_num, receptive_field, head_size)
 
         att = torch.einsum("bhn, bhrn -> bhr", Q, K) * (1.0 / sqrt(self.head_size))
-        att = att.masked_fill(mask == 0, float("-inf"))
+        att = att.masked_fill(mask == False, float("-inf"))
         att = F.softmax(att, dim=-1)
         # att: Shape (batch, head_num, receptive_field)
 
