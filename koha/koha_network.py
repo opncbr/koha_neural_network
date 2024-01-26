@@ -104,5 +104,4 @@ class KohaNetwork(torch.nn.Module):
             self.network_state[:, :, block_ind] = y
 
             losses.append(loss.item())
-        # XXX TODO: add logic to return block outputs for MLP blocks / other Koha networks
         return losses
