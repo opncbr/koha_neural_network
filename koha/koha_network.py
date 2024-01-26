@@ -28,14 +28,14 @@ class KohaNetwork(torch.nn.Module):
             padding=0,
             stride=1,
         )
-        self.mask_int = 0
+        self.mask_int = 1
         self.reset_parameters()
 
     def reset_parameters(self):
         torch.nn.init.kaiming_uniform_(self.embeddings.weight, a=sqrt(5))
 
     def initialize_state(self, batch=1):
-        self.mask_int = 0
+        self.mask_int = 1
         self.network_state = torch.zeros(
             batch, self.emb_dim, self.context + self.receptive_field - 1
         )
