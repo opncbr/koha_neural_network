@@ -11,7 +11,7 @@ class KohaNetwork(torch.nn.Module):
     ):
         super().__init__()
         self.vocab_size = network_config.vocab_size
-        self.emb_dim = network_config.emb_dim
+        self.emb_dim = block_config.emb_dim
         self.context = network_config.context
         self.receptive_field = block_config.receptive_field
         self.embeddings = Embedding(self.vocab_size, self.emb_dim, sparse=True)

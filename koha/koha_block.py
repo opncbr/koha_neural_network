@@ -77,26 +77,35 @@ class KohaBlock(torch.nn.Module):
 
         self.layer_optimizer = self.configure_optimizer(config)
         self.sampler = Sampler(config)
-        self.apply(self._initialize_parameters)
+        self.reset_parameters()
 
-    def _initialize_parameters(self, module):
-        if isinstance(module, Parameter):
-            torch.nn.init.normal_(module.data, mean=0.0, std=0.02)
+    def reset_parameters(self):
+        torch.nn.init.normal_(self.R_q, mean=0.0, std=0.02)
+        torch.nn.init.normal_(self.R_k, mean=0.0, std=0.02)
+        torch.nn.init.normal_(self.R_v, mean=0.0, std=0.02)
+        torch.nn.init.normal_(self.W_q, mean=0.0, std=0.02)
+        torch.nn.init.normal_(self.W_k, mean=0.0, std=0.02)
+        torch.nn.init.normal_(self.W_v, mean=0.0, std=0.02)
+        torch.nn.init.normal_(self.W_o, mean=0.0, std=0.02)
 
     def forward_pass(self, x, z, mask, pos: bool):
         batch = x.size(0)
 
-        Q = torch.einsum("be, hne -> bhn", x, self.R_q)
+        Q = torch.einsum("be, hne -> bhn", x, self.R_q) * (1.0 / sqrt(self.head_size))
         Q = F.softmax(Q, dim=-1) if pos else F.softmax(-Q, dim=-1)
         Q = torch.einsum("bhn, hnm -> bhm", Q, self.W_q)
         # Q: Shape (batch, head_num, head_size)
 
-        K = torch.einsum("bre, hrne -> bhrn", z, self.R_k)
+        K = torch.einsum("bre, hrne -> bhrn", z, self.R_k) * (
+            1.0 / sqrt(self.head_size)
+        )
         K = F.softmax(K, dim=-1)
         K = torch.einsum("bhrn, hrnm -> bhrm", K, self.W_k)
         # K: Shape (batch, head_num, receptive_field, head_size)
 
-        V = torch.einsum("bre, hrne -> bhrn", z, self.R_v)
+        V = torch.einsum("bre, hrne -> bhrn", z, self.R_v) * (
+            1.0 / sqrt(self.head_size)
+        )
         V = F.softmax(V, dim=-1)
         V = torch.einsum("bhrn, hrnm -> bhrm", V, self.W_v)
         # V: Shape (batch, head_num, receptive_field, head_size)
