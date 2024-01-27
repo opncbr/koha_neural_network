@@ -129,14 +129,15 @@ class KohaBlock(torch.nn.Module):
         # add positive and negative outputs to the Sampler
         self.sampler.sample_transition(y_pos, y_neg)
 
-        # compute negative loss
+        # compute positive & negative scores
         pos_out = self.sampler.get_positive_scores(y_pos)
         neg_out = self.sampler.get_negative_scores(y_pos)
 
+        # compute positive & negative loss
         positive_loss = -torch.log(torch.sigmoid(pos_out) + self.EPS).mean()
         negative_loss = -torch.log(1 - torch.sigmoid(neg_out) + self.EPS).mean()
         loss = positive_loss + negative_loss
-        # return positive output
+
         return loss, y_pos.detach()
 
     def configure_optimizer(self, config: KohaBlockConfig):
