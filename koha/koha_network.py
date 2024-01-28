@@ -44,7 +44,7 @@ class KohaNetwork(torch.nn.Module):
         )
 
     def _mask(self):
-        extended_context = self.context + self.receptive_field - 1
+        extended_context = self.context + self.receptive_field
         remainder = extended_context - self.mask_int
         mask = (
             torch.cat(
@@ -62,7 +62,7 @@ class KohaNetwork(torch.nn.Module):
         return mask
 
     def _increment_mask(self):
-        if self.mask_int < self.context:
+        if self.mask_int <= self.context + self.receptive_field - 1:
             self.mask_int += 1
 
     def forward(self, input_indices):
@@ -97,7 +97,6 @@ class KohaNetwork(torch.nn.Module):
             m = mask[block_ind].view(1, 1, self.receptive_field + 1)
             if torch.all(~m).item():
                 continue
-            # print(m.to(torch.int))
             if block_ind > 0:
                 x = x.detach()
                 z = z.detach()
@@ -121,7 +120,6 @@ class KohaNetwork(torch.nn.Module):
         positive_loss = -torch.log(torch.sigmoid(positive_scores) + self.EPS).mean()
         negative_loss = -torch.log(1 - torch.sigmoid(negative_scores) + self.EPS).mean()
         loss = positive_loss + negative_loss
-
         # weight udpate
         block.layer_optimizer.zero_grad()
         loss.backward()
