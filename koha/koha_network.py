@@ -15,12 +15,14 @@ class KohaNetwork(torch.nn.Module):
         self.context = network_config.context
         self.receptive_field = block_config.receptive_field
         self.embeddings = Embedding(self.vocab_size, self.emb_dim, sparse=True)
-        self.koha_blocks = [
-            KohaBlock(block_config, True)
-            if ind == 0
-            else KohaBlock(block_config, False)
-            for ind in range(network_config.context)
-        ]
+        self.koha_blocks = torch.nn.ModuleList(
+            [
+                KohaBlock(block_config, True)
+                if ind == 0
+                else KohaBlock(block_config, False)
+                for ind in range(network_config.context)
+            ]
+        )
         self.network_state = None
         self.unfold = torch.nn.Unfold(
             kernel_size=(self.emb_dim, self.receptive_field),
@@ -28,6 +30,7 @@ class KohaNetwork(torch.nn.Module):
             padding=0,
             stride=1,
         )
+        self.EPS = 1e-15
         self.mask_int = 1
         self.reset_parameters()
 
@@ -39,8 +42,6 @@ class KohaNetwork(torch.nn.Module):
         self.network_state = torch.zeros(
             batch, self.emb_dim, self.context + self.receptive_field - 1
         )
-        for block in self.koha_blocks:
-            block.sampler.initialize_state(batch)
 
     def _mask(self):
         extended_context = self.context + self.receptive_field - 1
@@ -88,7 +89,8 @@ class KohaNetwork(torch.nn.Module):
         mask = self._mask()
         self._increment_mask()
 
-        y = []
+        positive_pairs = []
+        negative_pairs = []
         losses = []
         for block_ind, block in enumerate(self.koha_blocks):
             x, z = X[block_ind], Z[block_ind]
@@ -97,11 +99,30 @@ class KohaNetwork(torch.nn.Module):
                 x = x.detach()
                 z = z.detach()
 
-            loss, y = block(x, z, m)
-            block.layer_optimizer.zero_grad()
-            loss.backward()
-            block.layer_optimizer.step()
-            self.network_state[:, :, block_ind] = y
+            y_pos, y_neg, y_pos_nograd = block(x, z, m)
+            self.network_state[:, :, block_ind] = y_pos_nograd
+            positive_pairs.append(y_pos.unsqueeze(1))
+            negative_pairs.append(y_neg.unsqueeze(1))
+        positive_pairs = torch.cat(positive_pairs, dim=1)
+        negative_pairs = torch.cat(negative_pairs, dim=1)
 
-            losses.append(loss.item())
+        # compute positive & negative scores
+        positive_scores = (
+            (positive_pairs @ positive_pairs.transpose(-1, -2)).sum(dim=-1).view(-1)
+        )
+        negative_scores = (
+            (positive_pairs @ negative_pairs.transpose(-1, -2)).sum(dim=-1).view(-1)
+        )
+
+        # compute positive & negative loss
+        positive_loss = -torch.log(torch.sigmoid(positive_scores) + self.EPS).mean()
+        negative_loss = -torch.log(1 - torch.sigmoid(negative_scores) + self.EPS).mean()
+        loss = positive_loss + negative_loss
+
+        # weight udpate
+        block.layer_optimizer.zero_grad()
+        loss.backward()
+        block.layer_optimizer.step()
+
+        losses.append(loss.item())
         return losses

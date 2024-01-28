@@ -9,31 +9,6 @@ import inspect
 DEBUG = getenv("DEBUG", 0)
 
 
-class Sampler:
-    def __init__(self, config: KohaBlockConfig):
-        self.config = config
-
-    def sample_transition(self, pos: torch.Tensor, neg: torch.Tensor):
-        self.pos_past[:, self.idx, :] = pos.detach()
-        self.neg_past[:, self.idx, :] = neg.detach()
-        self.idx = (self.idx + 1) % self.pos_past.size(1)
-
-    def get_positive_scores(self, y):
-        return (y @ self.pos_past.transpose(-1, -2)).sum(dim=-1).view(-1)
-
-    def get_negative_scores(self, y):
-        return (y @ self.neg_past.transpose(-1, -2)).sum(dim=-1).view(-1)
-
-    def initialize_state(self, batch):
-        self.idx = 0
-        self.pos_past = torch.zeros(
-            batch, self.config.window_size, self.config.emb_dim, requires_grad=False
-        )
-        self.neg_past = torch.zeros(
-            batch, self.config.window_size, self.config.emb_dim, requires_grad=False
-        )
-
-
 class KohaBlock(torch.nn.Module):
     def __init__(self, config: KohaBlockConfig, first_layer: bool):
         super().__init__()
@@ -43,7 +18,6 @@ class KohaBlock(torch.nn.Module):
         self.head_size = config.emb_dim // config.head_num
         assert self.emb_dim % self.head_num == 0
         self.receptive_field = config.receptive_field + 1
-        self.EPS = 1e-15
 
         self.R_q = Parameter(
             torch.empty((self.head_num, self.head_size, self.emb_dim))
@@ -76,7 +50,6 @@ class KohaBlock(torch.nn.Module):
         )  # Shape (emb_dim, emb_dim)
 
         self.layer_optimizer = self.configure_optimizer(config)
-        self.sampler = Sampler(config)
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -125,20 +98,7 @@ class KohaBlock(torch.nn.Module):
     def forward(self, x, z, mask):
         y_pos = self.forward_pass(x, z, mask, True)
         y_neg = self.forward_pass(x, z, mask, False)
-
-        # add positive and negative outputs to the Sampler
-        self.sampler.sample_transition(y_pos, y_neg)
-
-        # compute positive & negative scores
-        pos_out = self.sampler.get_positive_scores(y_pos)
-        neg_out = self.sampler.get_negative_scores(y_pos)
-
-        # compute positive & negative loss
-        positive_loss = -torch.log(torch.sigmoid(pos_out) + self.EPS).mean()
-        negative_loss = -torch.log(1 - torch.sigmoid(neg_out) + self.EPS).mean()
-        loss = positive_loss + negative_loss
-
-        return loss, y_pos.detach()
+        return y_pos, y_neg, y_pos.detach()
 
     def configure_optimizer(self, config: KohaBlockConfig):
         # start with all of the candidate parameters
