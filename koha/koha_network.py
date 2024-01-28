@@ -95,6 +95,9 @@ class KohaNetwork(torch.nn.Module):
         for block_ind, block in enumerate(self.koha_blocks):
             x, z = X[block_ind], Z[block_ind]
             m = mask[block_ind].view(1, 1, self.receptive_field + 1)
+            if torch.all(~m).item():
+                continue
+            # print(m.to(torch.int))
             if block_ind > 0:
                 x = x.detach()
                 z = z.detach()
