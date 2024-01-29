@@ -97,7 +97,6 @@ class KohaNetwork(torch.nn.Module):
 
         positive_pairs = []
         negative_pairs = []
-        losses = []
         for block_ind, block in enumerate(self.koha_blocks):
             x, z = X[block_ind], Z[block_ind]
             m = mask[block_ind].view(1, 1, self.receptive_field + 1)
@@ -130,8 +129,7 @@ class KohaNetwork(torch.nn.Module):
         loss.backward()
         self.layer_optimizer.step()
 
-        losses.append(loss.item())
-        return losses
+        return self.network_state.flatten()
 
     def configure_optimizer(self, config: KohaBlockConfig):
         # start with all of the candidate parameters
