@@ -82,7 +82,6 @@ class KohaNetwork(torch.nn.Module):
                 self.network_state.permute(2, 0, 1)[: self.context - 1, :, :],
             ]
         )
-
         Z = (
             self.unfold(self.network_state.unsqueeze(1))
             .permute(2, 0, 1)
@@ -130,7 +129,7 @@ class KohaNetwork(torch.nn.Module):
         loss.backward()
         self.layer_optimizer.step()
 
-        return self.network_state[:, :, : self.context].flatten()
+        return self.network_state[:, :, : self.context].view(batch, -1)
 
     def configure_optimizer(self, config: KohaBlockConfig):
         # start with all of the candidate parameters
