@@ -53,7 +53,7 @@ def train(model):
         model.initialize_state(batch_size)
         for i in range(sequence_length):
             input = x[:, i].unsqueeze(1)
-            losses = model(input)
+            out = model(input)
             # print(losses)
             # total_loss += loss.item()
     # return total_loss / len(data_loader)

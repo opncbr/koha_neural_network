@@ -129,7 +129,7 @@ class KohaNetwork(torch.nn.Module):
         loss.backward()
         self.layer_optimizer.step()
 
-        return self.network_state.flatten()
+        return self.network_state[:, :, : self.context].flatten()
 
     def configure_optimizer(self, config: KohaBlockConfig):
         # start with all of the candidate parameters
