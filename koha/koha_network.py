@@ -18,7 +18,7 @@ class KohaNetwork(torch.nn.Module):
         self.emb_dim = block_config.emb_dim
         self.context = network_config.context
         self.receptive_field = block_config.receptive_field
-        self.embeddings = Embedding(self.vocab_size, self.emb_dim, sparse=True)
+        self.embeddings = Embedding(self.vocab_size, self.emb_dim)
         self.koha_blocks = torch.nn.ModuleList(
             [
                 KohaBlock(block_config, True)
@@ -124,7 +124,6 @@ class KohaNetwork(torch.nn.Module):
         positive_loss = -torch.log(torch.sigmoid(positive_scores) + self.EPS).mean()
         negative_loss = -torch.log(1 - torch.sigmoid(negative_scores) + self.EPS).mean()
         loss = positive_loss + negative_loss
-        print(loss)
 
         # weight udpate
         self.layer_optimizer.zero_grad()
