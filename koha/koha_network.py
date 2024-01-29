@@ -35,7 +35,7 @@ class KohaNetwork(torch.nn.Module):
             stride=1,
         )
         self.EPS = 1e-15
-        self.mask_int = 1
+        self.mask_int = 2
         self.layer_optimizer = self.configure_optimizer(KohaBlockConfig)
         self.reset_parameters()
 
@@ -43,7 +43,7 @@ class KohaNetwork(torch.nn.Module):
         torch.nn.init.kaiming_uniform_(self.embeddings.weight, a=sqrt(5))
 
     def initialize_state(self, batch=1):
-        self.mask_int = 1
+        self.mask_int = 2
         self.network_state = torch.zeros(
             batch, self.emb_dim, self.context + self.receptive_field - 1
         )
@@ -64,7 +64,6 @@ class KohaNetwork(torch.nn.Module):
             .detach()
             .to(torch.bool)
         )
-        mask[:, 0] = True
         return mask
 
     def _increment_mask(self):
@@ -100,6 +99,8 @@ class KohaNetwork(torch.nn.Module):
         for block_ind, block in enumerate(self.koha_blocks):
             x, z = X[block_ind], Z[block_ind]
             m = mask[block_ind].view(1, 1, self.receptive_field + 1)
+            if torch.all(~m).item():
+                continue
             if block_ind > 0:
                 x = x.detach()
                 z = z.detach()
