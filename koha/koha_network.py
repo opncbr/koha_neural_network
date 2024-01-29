@@ -59,6 +59,7 @@ class KohaNetwork(torch.nn.Module):
             .detach()
             .to(torch.bool)
         )
+        mask[:, 0] = True
         return mask
 
     def _increment_mask(self):
@@ -95,8 +96,6 @@ class KohaNetwork(torch.nn.Module):
         for block_ind, block in enumerate(self.koha_blocks):
             x, z = X[block_ind], Z[block_ind]
             m = mask[block_ind].view(1, 1, self.receptive_field + 1)
-            if torch.all(~m).item():
-                continue
             if block_ind > 0:
                 x = x.detach()
                 z = z.detach()
@@ -120,6 +119,7 @@ class KohaNetwork(torch.nn.Module):
         positive_loss = -torch.log(torch.sigmoid(positive_scores) + self.EPS).mean()
         negative_loss = -torch.log(1 - torch.sigmoid(negative_scores) + self.EPS).mean()
         loss = positive_loss + negative_loss
+
         # weight udpate
         block.layer_optimizer.zero_grad()
         loss.backward()
