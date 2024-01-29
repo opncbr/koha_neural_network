@@ -35,7 +35,7 @@ class KohaNetwork(torch.nn.Module):
             stride=1,
         )
         self.EPS = 1e-15
-        self.mask_int = 2
+        self.mask_int = 1
         self.layer_optimizer = self.configure_optimizer(KohaBlockConfig)
         self.reset_parameters()
 
@@ -43,7 +43,7 @@ class KohaNetwork(torch.nn.Module):
         torch.nn.init.kaiming_uniform_(self.embeddings.weight, a=sqrt(5))
 
     def initialize_state(self, batch=1):
-        self.mask_int = 2
+        self.mask_int = 1
         self.network_state = torch.zeros(
             batch, self.emb_dim, self.context + self.receptive_field - 1
         )
@@ -82,6 +82,7 @@ class KohaNetwork(torch.nn.Module):
                 self.network_state.permute(2, 0, 1)[: self.context - 1, :, :],
             ]
         )
+
         Z = (
             self.unfold(self.network_state.unsqueeze(1))
             .permute(2, 0, 1)
@@ -97,6 +98,7 @@ class KohaNetwork(torch.nn.Module):
         positive_pairs = []
         negative_pairs = []
         for block_ind, block in enumerate(self.koha_blocks):
+            print("hi")
             x, z = X[block_ind], Z[block_ind]
             m = mask[block_ind].view(1, 1, self.receptive_field + 1)
             if torch.all(~m).item():
@@ -104,7 +106,7 @@ class KohaNetwork(torch.nn.Module):
             if block_ind > 0:
                 x = x.detach()
                 z = z.detach()
-
+            print(x)
             y_pos, y_neg, y_pos_nograd = block(x, z, m)
             self.network_state[:, :, block_ind] = y_pos_nograd
             positive_pairs.append(y_pos.unsqueeze(1))
