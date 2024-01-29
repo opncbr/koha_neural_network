@@ -3,10 +3,6 @@ from .config import KohaBlockConfig
 from torch.nn.parameter import Parameter
 from torch.nn import functional as F
 from math import sqrt
-from .helpers import getenv
-import inspect
-
-DEBUG = getenv("DEBUG", 0)
 
 
 class KohaBlock(torch.nn.Module):
@@ -49,7 +45,6 @@ class KohaBlock(torch.nn.Module):
             torch.empty((self.emb_dim, self.emb_dim))
         )  # Shape (emb_dim, emb_dim)
 
-        self.layer_optimizer = self.configure_optimizer(config)
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -99,40 +94,3 @@ class KohaBlock(torch.nn.Module):
         y_pos = self.forward_pass(x, z, mask, True)
         y_neg = self.forward_pass(x, z, mask, False)
         return y_pos, y_neg, y_pos.detach()
-
-    def configure_optimizer(self, config: KohaBlockConfig):
-        # start with all of the candidate parameters
-        param_dict = {pn: p for pn, p in self.named_parameters()}
-        # filter out those that do not require grad
-        param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
-        # create optim groups. Any parameters that is 2D will be weight decayed, otherwise no.
-        # i.e. all weight tensors in matmuls + embeddings decay, all biases and layernorms don't.
-        decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
-        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
-        optim_groups = [
-            {"params": decay_params, "weight_decay": config.weight_decay},
-            {"params": nodecay_params, "weight_decay": 0.0},
-        ]
-        num_decay_params = sum(p.numel() for p in decay_params)
-        num_nodecay_params = sum(p.numel() for p in nodecay_params)
-        if DEBUG > 0:
-            print(
-                f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters"
-            )
-            print(
-                f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters"
-            )
-        # Create AdamW optimizer and use the fused version if it is available
-        fused_available = "fused" in inspect.signature(torch.optim.AdamW).parameters
-        use_fused = fused_available and config.device_type == "cuda"
-        extra_args = dict(fused=True) if use_fused else dict()
-        optimizer = torch.optim.AdamW(
-            optim_groups,
-            lr=config.learning_rate,
-            betas=(config.beta1, config.beta2),
-            **extra_args,
-        )
-        if DEBUG > 0:
-            print(f"using fused AdamW: {use_fused}")
-
-        return optimizer
