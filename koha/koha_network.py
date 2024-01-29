@@ -98,7 +98,6 @@ class KohaNetwork(torch.nn.Module):
         positive_pairs = []
         negative_pairs = []
         for block_ind, block in enumerate(self.koha_blocks):
-            print("hi")
             x, z = X[block_ind], Z[block_ind]
             m = mask[block_ind].view(1, 1, self.receptive_field + 1)
             if torch.all(~m).item():
@@ -106,7 +105,6 @@ class KohaNetwork(torch.nn.Module):
             if block_ind > 0:
                 x = x.detach()
                 z = z.detach()
-            print(x)
             y_pos, y_neg, y_pos_nograd = block(x, z, m)
             self.network_state[:, :, block_ind] = y_pos_nograd
             positive_pairs.append(y_pos.unsqueeze(1))

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 @dataclass
 class KohaBlockConfig:
-    emb_dim: int = 128  # embedding dimension
+    emb_dim: int = 16  # embedding dimension
     head_num: int = 4  # number of heads
     receptive_field = 5  # number of connections to other Koha blocks
     window_size: int = 5  # temporal window used for positve and negative sampling
