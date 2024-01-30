@@ -51,12 +51,12 @@ def train(model):
     # total_loss = 0
     for x, _ in tqdm(data_loader):
         model.initialize_state(batch_size)
+        losses = []
         for i in range(sequence_length):
             input = x[:, i].unsqueeze(1)
-            out = model(input)
-            # print(losses)
-            # total_loss += loss.item()
-    # return total_loss / len(data_loader)
+            loss, out = model(input)
+            losses.append(loss.item())
+        print("loss", np.average(losses))
 
 
 train(koha_network)

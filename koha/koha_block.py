@@ -48,13 +48,13 @@ class KohaBlock(torch.nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        torch.nn.init.normal_(self.R_q, mean=0.0, std=0.02)
-        torch.nn.init.normal_(self.R_k, mean=0.0, std=0.02)
-        torch.nn.init.normal_(self.R_v, mean=0.0, std=0.02)
-        torch.nn.init.normal_(self.W_q, mean=0.0, std=0.02)
-        torch.nn.init.normal_(self.W_k, mean=0.0, std=0.02)
-        torch.nn.init.normal_(self.W_v, mean=0.0, std=0.02)
-        torch.nn.init.normal_(self.W_o, mean=0.0, std=0.02)
+        torch.nn.init.xavier_uniform_(self.R_q)
+        torch.nn.init.xavier_uniform_(self.R_k)
+        torch.nn.init.xavier_uniform_(self.R_v)
+        torch.nn.init.xavier_uniform_(self.W_q)
+        torch.nn.init.xavier_uniform_(self.W_k)
+        torch.nn.init.xavier_uniform_(self.W_v)
+        torch.nn.init.xavier_uniform_(self.W_o)
 
     def forward_pass(self, x, z, mask, pos: bool):
         batch = x.size(0)

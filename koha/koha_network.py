@@ -123,13 +123,12 @@ class KohaNetwork(torch.nn.Module):
         positive_loss = -torch.log(torch.sigmoid(positive_scores) + self.EPS).mean()
         negative_loss = -torch.log(1 - torch.sigmoid(negative_scores) + self.EPS).mean()
         loss = positive_loss + negative_loss
-        print(positive_loss, negative_loss)
-        # weight udpate
+
+        # weight update
         self.layer_optimizer.zero_grad()
         loss.backward()
         self.layer_optimizer.step()
-
-        return self.network_state[:, :, : self.context].reshape(batch, -1)
+        return loss, self.network_state[:, :, : self.context].reshape(batch, -1)
 
     def configure_optimizer(self, config: KohaBlockConfig):
         # start with all of the candidate parameters
