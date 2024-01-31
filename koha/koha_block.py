@@ -59,14 +59,12 @@ class KohaBlock(torch.nn.Module):
     def forward_pass(self, x, z, mask, pos: bool):
         batch = x.size(0)
 
-        Q = torch.einsum("be, hne -> bhn", x, self.R_q) * (1.0 / sqrt(self.head_size))
+        Q = torch.einsum("be, hne -> bhn", x, self.R_q)
         Q = F.softmax(Q, dim=-1) if pos else F.softmax(-Q, dim=-1)
         Q = torch.einsum("bhn, hnm -> bhm", Q, self.W_q)
         # Q: Shape (batch, head_num, head_size)
 
-        K = torch.einsum("bre, hrne -> bhrn", z, self.R_k) * (
-            1.0 / sqrt(self.head_size)
-        )
+        K = torch.einsum("bre, hrne -> bhrn", z, self.R_k)
         K = F.softmax(K, dim=-1)
         K = torch.einsum("bhrn, hrnm -> bhrm", K, self.W_k)
         # K: Shape (batch, head_num, receptive_field, head_size)
