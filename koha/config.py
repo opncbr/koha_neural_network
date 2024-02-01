@@ -5,7 +5,8 @@ from dataclasses import dataclass
 class KohaBlockConfig:
     emb_dim: int = 16  # embedding dimension
     head_num: int = 4  # number of heads
-    receptive_field = 5  # number of connections to other Koha blocks
+    receptive_field = 10  # number of connections to other Koha blocks
+    neg_sample_size = 2
     weight_decay: float = 1e-1
     learning_rate: float = 6e-4
     beta1: float = 0.9

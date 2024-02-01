@@ -5,90 +5,101 @@ from torch.nn import functional as F
 from math import sqrt
 
 
-class KohaBlock(torch.nn.Module):
-    def __init__(self, config: KohaBlockConfig, first_layer: bool):
+class QReceiver(torch.nn.Module):
+    def __init__(self, config: KohaBlockConfig):
         super().__init__()
-        self.first_layer = first_layer
         self.emb_dim = config.emb_dim
         self.head_num = config.head_num
-        self.head_size = config.emb_dim // config.head_num
+        self.head_size = self.emb_dim // self.head_num
+        self.neg_sample_size = config.neg_sample_size
         assert self.emb_dim % self.head_num == 0
-        self.receptive_field = config.receptive_field + 1
-
-        self.R_q = Parameter(
-            torch.empty((self.head_num, self.head_size, self.emb_dim))
-        )  # Shape (head_num, head_size, emb_dim)
-        self.W_q = Parameter(
-            torch.empty((self.head_num, self.head_size, self.head_size))
-        )  # Shape (head_num, head_size, head_size)
-        self.R_k = Parameter(
-            torch.empty(
-                (self.head_num, self.receptive_field, self.head_size, self.emb_dim)
-            )
-        )  # Shape (head_num, receptive_field, head_size, emb_dim)
-        self.W_k = Parameter(
-            torch.empty(
-                (self.head_num, self.receptive_field, self.head_size, self.head_size)
-            )
-        )  # Shape (head_num, receptive_field, head_size, head_size)
-        self.R_v = Parameter(
-            torch.empty(
-                (self.head_num, self.receptive_field, self.head_size, self.emb_dim)
-            )
-        )  # Shape (head_num, receptive_field, head_size, emb_dim)
-        self.W_v = Parameter(
-            torch.empty(
-                (self.head_num, self.receptive_field, self.head_size, self.head_size)
-            )
-        )  # Shape (head_num, receptive_field, head_size, head_size)
-        self.W_o = Parameter(
-            torch.empty((self.emb_dim, self.emb_dim))
-        )  # Shape (emb_dim, emb_dim)
-
+        assert self.neg_sample_size < self.head_size - 1
+        self.R = Parameter(torch.empty((self.emb_dim, self.emb_dim)))
+        self.W = Parameter(torch.empty((self.emb_dim, self.emb_dim)))
         self.reset_parameters()
 
     def reset_parameters(self):
-        torch.nn.init.xavier_uniform_(self.R_q)
-        torch.nn.init.xavier_uniform_(self.R_k)
-        torch.nn.init.xavier_uniform_(self.R_v)
-        torch.nn.init.xavier_uniform_(self.W_q)
-        torch.nn.init.xavier_uniform_(self.W_k)
-        torch.nn.init.xavier_uniform_(self.W_v)
+        torch.nn.init.xavier_uniform_(self.R)
+        torch.nn.init.xavier_uniform_(self.W)
+
+    def forward(self, x):
+        batch = x.size(0)
+        r = x @ self.R
+        r_pos = F.softmax(r, dim=-1)
+        q_pos = r_pos @ self.W
+        q_pos = q_pos.view(batch, -1, self.head_num, self.head_size)
+        return q_pos, r.detach()
+
+    def negative_forward(self, r):
+        # compute negative samples
+        r_neg = F.softmax(-r, dim=-1)
+        rand_neg_indices = torch.multinomial(
+            r_neg, self.neg_sample_size, replacement=False
+        )
+        neg_inputs = self.R[:, rand_neg_indices].permute(1, 2, 0).detach()
+        # negative forward pass
+        out, _ = self.forward(neg_inputs)
+        return out
+
+
+class KVReceiver(torch.nn.Module):
+    def __init__(self, config: KohaBlockConfig):
+        super().__init__()
+        self.emb_dim = config.emb_dim
+        self.head_num = config.head_num
+        self.head_size = self.emb_dim // self.head_num
+        self.receptive_field = config.receptive_field + 1
+        self.R = Parameter(
+            torch.empty((self.receptive_field, self.emb_dim, self.emb_dim))
+        )
+        self.W = Parameter(
+            torch.empty((self.receptive_field, self.emb_dim, self.emb_dim))
+        )
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        torch.nn.init.xavier_uniform_(self.R)
+        torch.nn.init.xavier_uniform_(self.W)
+
+    def forward(self, z):
+        r = torch.einsum("bre, rei -> bri", z, self.R)
+        r = F.softmax(r, dim=-1)
+        kv = torch.einsum("bre, rei -> bri", r, self.W)
+        kv = kv.view(-1, self.receptive_field, self.head_num, self.head_size).transpose(
+            1, 2
+        )
+        return kv
+
+
+class KohaBlock(torch.nn.Module):
+    def __init__(self, config: KohaBlockConfig):
+        super().__init__()
+        self.emb_dim = config.emb_dim
+        self.head_size = config.emb_dim // config.head_num
+        self.q = QReceiver(config)
+        self.k = KVReceiver(config)
+        self.v = KVReceiver(config)
+        self.W_o = Parameter(torch.empty((self.emb_dim, self.emb_dim)))
+        self.reset_parameters()
+
+    def reset_parameters(self):
         torch.nn.init.xavier_uniform_(self.W_o)
 
-    def forward_pass(self, x, z, mask, pos: bool):
-        batch = x.size(0)
-
-        Q = torch.einsum("be, hne -> bhn", x, self.R_q)
-        Q = F.softmax(Q, dim=-1) if pos else F.softmax(-Q, dim=-1)
-        Q = torch.einsum("bhn, hnm -> bhm", Q, self.W_q)
-        # Q: Shape (batch, head_num, head_size)
-
-        K = torch.einsum("bre, hrne -> bhrn", z, self.R_k)
-        K = F.softmax(K, dim=-1)
-        K = torch.einsum("bhrn, hrnm -> bhrm", K, self.W_k)
-        # K: Shape (batch, head_num, receptive_field, head_size)
-
-        V = torch.einsum("bre, hrne -> bhrn", z, self.R_v) * (
-            1.0 / sqrt(self.head_size)
-        )
-        V = F.softmax(V, dim=-1)
-        V = torch.einsum("bhrn, hrnm -> bhrm", V, self.W_v)
-        # V: Shape (batch, head_num, receptive_field, head_size)
-
-        att = torch.einsum("bhn, bhrn -> bhr", Q, K) * (1.0 / sqrt(self.head_size))
+    def _attention(self, q, k, v, mask):
+        att = torch.einsum("bshn, bhrn -> bshr", q, k) * (1.0 / sqrt(self.head_size))
         att = att.masked_fill(mask == False, float("-inf"))
         att = F.softmax(att, dim=-1)
-        # att: Shape (batch, head_num, receptive_field)
-
-        y = torch.einsum("bhr, bhrn -> bhn", att, V)
-        y = y.reshape(batch, self.emb_dim)  # Re-assemble all head outputs side by side
-        y = y @ self.W_o
-        # y: Shape (batch, emb_dim)
-
-        return y
+        return torch.einsum("bshr, bhrn -> bshn", att, v)
 
     def forward(self, x, z, mask):
-        y_pos = self.forward_pass(x, z, mask, True)
-        y_neg = self.forward_pass(x, z, mask, False)
+        batch = x.size(0)
+        Q, neg_inputs = self.q(x)
+        K = self.k(z)
+        V = self.v(z)
+        neg_Q = self.q.negative_forward(neg_inputs)
+
+        y_pos = self._attention(Q, K, V, mask).reshape(batch, self.emb_dim)
+        y_neg = self._attention(neg_Q, K, V, mask).reshape(batch, -1, self.emb_dim)
+        y_pos = y_pos @ self.W_o
+        y_neg = y_neg @ self.W_o
         return y_pos, y_neg, y_pos.detach()
