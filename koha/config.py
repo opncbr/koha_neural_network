@@ -3,12 +3,12 @@ from dataclasses import dataclass
 
 @dataclass
 class KohaBlockConfig:
-    emb_dim: int = 16  # embedding dimension
-    head_num: int = 4  # number of heads
-    receptive_field = 10  # number of connections to other Koha blocks
+    emb_dim: int = 128  # embedding dimension
+    head_num: int = 8  # number of heads
+    receptive_field = 5  # number of connections to other Koha blocks
     neg_sample_size = 2
     weight_decay: float = 1e-1
-    learning_rate: float = 6e-4
+    learning_rate: float = 6e-6
     beta1: float = 0.9
     beta2: float = 0.95
     device_type: str = "cpu"
@@ -16,6 +16,5 @@ class KohaBlockConfig:
 
 @dataclass
 class KohaNetworkConfig:
-    lr: float = 0.001  # signature learning rate
     vocab_size: int = 50256  # size of vocabulary
     context: int = 10
