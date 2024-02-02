@@ -52,8 +52,7 @@ class QReceiver(torch.nn.Module):
             rand_neg_indices = torch.multinomial(
                 r_neg, self.neg_sample_size, replacement=False
             )
-            neg_inputs = self.R[:, rand_neg_indices].permute(1, 2, 0).detach()
-            # neg_inputs = r_neg @ self.R.T
+            neg_inputs = self.R[:, rand_neg_indices].permute(1, 2, 0)
         # negative forward pass
         out, _ = self.forward(neg_inputs)
         return out
