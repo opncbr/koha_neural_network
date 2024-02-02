@@ -25,8 +25,8 @@ class QReceiver(torch.nn.Module):
         self.neg_sample_size = config.neg_sample_size
         assert self.emb_dim % self.head_num == 0
         assert self.neg_sample_size < self.head_size - 1
-        self.R = Parameter(torch.empty((self.emb_dim, self.emb_dim * 4)))
-        self.W = Parameter(torch.empty((self.emb_dim * 4, self.emb_dim)))
+        self.R = Parameter(torch.empty((self.emb_dim, self.emb_dim * 1)))
+        self.W = Parameter(torch.empty((self.emb_dim * 1, self.emb_dim)))
         self.ln = LayerNorm(self.head_size)
         self.gelu = torch.nn.GELU()
         self.reset_parameters()
@@ -66,10 +66,10 @@ class KVReceiver(torch.nn.Module):
         self.head_size = self.emb_dim // self.head_num
         self.receptive_field = config.receptive_field + 1
         self.R = Parameter(
-            torch.empty((self.receptive_field, self.emb_dim, self.emb_dim * 4))
+            torch.empty((self.receptive_field, self.emb_dim, self.emb_dim * 1))
         )
         self.W = Parameter(
-            torch.empty((self.receptive_field, self.emb_dim * 4, self.emb_dim))
+            torch.empty((self.receptive_field, self.emb_dim * 1, self.emb_dim))
         )
         self.ln = LayerNorm(self.head_size)
         self.gelu = torch.nn.GELU()
