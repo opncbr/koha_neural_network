@@ -20,12 +20,7 @@ class KohaNetwork(torch.nn.Module):
         self.receptive_field = block_config.receptive_field
         self.embeddings = Embedding(self.vocab_size, self.emb_dim)
         self.koha_blocks = torch.nn.ModuleList(
-            [
-                KohaBlock(block_config, True)
-                if ind == 0
-                else KohaBlock(block_config, False)
-                for ind in range(network_config.context)
-            ]
+            [KohaBlock(block_config) for _ in range(network_config.context)]
         )
         self.network_state = None
         self.unfold = torch.nn.Unfold(
@@ -98,7 +93,7 @@ class KohaNetwork(torch.nn.Module):
         negative_pairs = []
         for block_ind, block in enumerate(self.koha_blocks):
             x, z = X[block_ind], Z[block_ind]
-            m = mask[block_ind].view(1, 1, self.receptive_field + 1)
+            m = mask[block_ind].view(1, 1, 1, self.receptive_field + 1)
             if torch.all(~m).item():
                 continue
             if block_ind > 0:
@@ -112,12 +107,10 @@ class KohaNetwork(torch.nn.Module):
         negative_pairs = torch.cat(negative_pairs, dim=1)
 
         # compute positive & negative scores
-        positive_scores = (
-            (positive_pairs @ positive_pairs.transpose(-1, -2)).sum(dim=-1).view(-1)
-        )
-        negative_scores = (
-            (positive_pairs @ negative_pairs.transpose(-1, -2)).sum(dim=-1).view(-1)
-        )
+        positive_scores = (positive_pairs @ positive_pairs.transpose(-1, -2)).view(-1)
+        negative_scores = torch.einsum(
+            "bie, bjwe -> bijw", positive_pairs, negative_pairs
+        ).view(-1)
 
         # compute positive & negative loss
         positive_loss = -torch.log(torch.sigmoid(positive_scores) + self.EPS).mean()
