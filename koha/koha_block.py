@@ -25,9 +25,9 @@ class QReceiver(torch.nn.Module):
         self.neg_sample_size = config.neg_sample_size
         assert self.emb_dim % self.head_num == 0
         assert self.neg_sample_size < self.head_size - 1
-        self.R = Parameter(torch.empty((self.emb_dim, self.emb_dim)))
-        self.W = Parameter(torch.empty((self.emb_dim, self.emb_dim)))
-        self.ln = LayerNorm(self.emb_dim)
+        self.R = Parameter(torch.empty((self.emb_dim, self.emb_dim * 4)))
+        self.W = Parameter(torch.empty((self.emb_dim * 4, self.emb_dim)))
+        self.ln = LayerNorm(self.head_size)
         self.gelu = torch.nn.GELU()
         self.reset_parameters()
 
@@ -38,11 +38,11 @@ class QReceiver(torch.nn.Module):
     def forward(self, x):
         batch = x.size(0)
         r = x @ self.R
-        r_pos = self.gelu(r)  # F.softmax(r, dim=-1)
+        r_pos = self.gelu(r)
 
         q_pos = r_pos @ self.W
-        q_pos = self.ln(q_pos)
         q_pos = q_pos.view(batch, -1, self.head_num, self.head_size)
+        q_pos = self.ln(q_pos)
         return q_pos, r.detach()
 
     def negative_forward(self, r):
@@ -65,12 +65,12 @@ class KVReceiver(torch.nn.Module):
         self.head_size = self.emb_dim // self.head_num
         self.receptive_field = config.receptive_field + 1
         self.R = Parameter(
-            torch.empty((self.receptive_field, self.emb_dim, self.emb_dim))
+            torch.empty((self.receptive_field, self.emb_dim, self.emb_dim * 4))
         )
         self.W = Parameter(
-            torch.empty((self.receptive_field, self.emb_dim, self.emb_dim))
+            torch.empty((self.receptive_field, self.emb_dim * 4, self.emb_dim))
         )
-        self.ln = LayerNorm(self.emb_dim)
+        self.ln = LayerNorm(self.head_size)
         self.gelu = torch.nn.GELU()
         self.reset_parameters()
 
@@ -81,11 +81,11 @@ class KVReceiver(torch.nn.Module):
     def forward(self, z):
         r = torch.einsum("bre, rei -> bri", z, self.R)
         r = self.gelu(r)  # F.softmax(r, dim=-1)
-        kv = torch.einsum("bre, rei -> bri", r, self.W)
-        kv = self.ln(kv)
+        kv = torch.einsum("bri, rie -> bre", r, self.W)
         kv = kv.view(-1, self.receptive_field, self.head_num, self.head_size).transpose(
             1, 2
         )
+        kv = self.ln(kv)
         return kv
 
 
@@ -98,6 +98,7 @@ class KohaBlock(torch.nn.Module):
         self.k = KVReceiver(config)
         self.v = KVReceiver(config)
         self.W_o = Parameter(torch.empty((self.emb_dim, self.emb_dim)))
+        self.ln = LayerNorm(self.emb_dim)
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -118,6 +119,6 @@ class KohaBlock(torch.nn.Module):
 
         y_pos = self._attention(Q, K, V, mask).reshape(batch, self.emb_dim)
         y_neg = self._attention(neg_Q, K, V, mask).reshape(batch, -1, self.emb_dim)
-        y_pos = y_pos @ self.W_o
-        y_neg = y_neg @ self.W_o
+        y_pos = self.ln(y_pos @ self.W_o)
+        y_neg = self.ln(y_neg @ self.W_o)
         return y_pos, y_neg, y_pos.detach()
