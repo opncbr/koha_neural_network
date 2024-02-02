@@ -5,6 +5,17 @@ from torch.nn import functional as F
 from math import sqrt
 
 
+class LayerNorm(torch.nn.Module):
+    """LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False"""
+
+    def __init__(self, emb_dim):
+        super().__init__()
+        self.weight = Parameter(torch.ones(emb_dim))
+
+    def forward(self, input):
+        return F.layer_norm(input, self.weight.shape, self.weight, None, 1e-5)
+
+
 class QReceiver(torch.nn.Module):
     def __init__(self, config: KohaBlockConfig):
         super().__init__()
@@ -16,6 +27,8 @@ class QReceiver(torch.nn.Module):
         assert self.neg_sample_size < self.head_size - 1
         self.R = Parameter(torch.empty((self.emb_dim, self.emb_dim)))
         self.W = Parameter(torch.empty((self.emb_dim, self.emb_dim)))
+        self.ln = LayerNorm(self.emb_dim)
+        self.gelu = torch.nn.GELU()
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -25,8 +38,10 @@ class QReceiver(torch.nn.Module):
     def forward(self, x):
         batch = x.size(0)
         r = x @ self.R
-        r_pos = F.softmax(r, dim=-1)
+        r_pos = self.gelu(r)  # F.softmax(r, dim=-1)
+
         q_pos = r_pos @ self.W
+        q_pos = self.ln(q_pos)
         q_pos = q_pos.view(batch, -1, self.head_num, self.head_size)
         return q_pos, r.detach()
 
@@ -55,6 +70,8 @@ class KVReceiver(torch.nn.Module):
         self.W = Parameter(
             torch.empty((self.receptive_field, self.emb_dim, self.emb_dim))
         )
+        self.ln = LayerNorm(self.emb_dim)
+        self.gelu = torch.nn.GELU()
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -63,8 +80,9 @@ class KVReceiver(torch.nn.Module):
 
     def forward(self, z):
         r = torch.einsum("bre, rei -> bri", z, self.R)
-        r = F.softmax(r, dim=-1)
+        r = self.gelu(r)  # F.softmax(r, dim=-1)
         kv = torch.einsum("bre, rei -> bri", r, self.W)
+        kv = self.ln(kv)
         kv = kv.view(-1, self.receptive_field, self.head_num, self.head_size).transpose(
             1, 2
         )
