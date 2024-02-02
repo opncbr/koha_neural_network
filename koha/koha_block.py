@@ -47,11 +47,13 @@ class QReceiver(torch.nn.Module):
 
     def negative_forward(self, r):
         # compute negative samples
-        r_neg = F.softmax(-r, dim=-1)
-        rand_neg_indices = torch.multinomial(
-            r_neg, self.neg_sample_size, replacement=False
-        )
-        neg_inputs = self.R[:, rand_neg_indices].permute(1, 2, 0).detach()
+        with torch.no_grad():
+            r_neg = F.softmax(-r * sqrt(self.head_size), dim=-1)
+            rand_neg_indices = torch.multinomial(
+                r_neg, self.neg_sample_size, replacement=False
+            )
+            neg_inputs = self.R[:, rand_neg_indices].permute(1, 2, 0).detach()
+            # neg_inputs = r_neg @ self.R.T
         # negative forward pass
         out, _ = self.forward(neg_inputs)
         return out
