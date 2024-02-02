@@ -11,7 +11,7 @@ device = "mps"  #'cuda' if torch.cuda.is_available() else 'cpu'
 dataset = "shakespeare"
 saved_model_dir = "saved_models/koha_model"
 sequence_length = 100
-batch_size = 16
+batch_size = 64
 shuffle = True
 num_workers = 0
 
