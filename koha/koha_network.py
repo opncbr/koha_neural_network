@@ -1,8 +1,8 @@
 import torch
 from torch.nn import Embedding
 from math import sqrt
-from .config import KohaNetworkConfig, KohaBlockConfig
-from .koha_block import KohaBlock
+from .config import KohaNetworkConfig, KohaModuleConfig
+from .koha_block import KohaModule
 from .helpers import getenv
 import inspect
 
@@ -11,17 +11,16 @@ DEBUG = getenv("DEBUG", 0)
 
 class KohaNetwork(torch.nn.Module):
     def __init__(
-        self, network_config: KohaNetworkConfig, block_config: KohaBlockConfig
+        self, network_config: KohaNetworkConfig, block_config: KohaModuleConfig
     ):
         super().__init__()
         self.vocab_size = network_config.vocab_size
         self.emb_dim = block_config.emb_dim
-        self.context = network_config.context
+        self.block_num = block_config.block_num
         self.receptive_field = block_config.receptive_field
         self.embeddings = Embedding(self.vocab_size, self.emb_dim)
-        self.koha_blocks = torch.nn.ModuleList(
-            [KohaBlock(block_config) for _ in range(network_config.context)]
-        )
+
+        self.koha_blocks = KohaModule(block_config)
         self.network_state = None
         self.unfold = torch.nn.Unfold(
             kernel_size=(self.emb_dim, self.receptive_field),
@@ -31,7 +30,7 @@ class KohaNetwork(torch.nn.Module):
         )
         self.EPS = 1e-15
         self.mask_int = 1
-        self.layer_optimizer = self.configure_optimizer(KohaBlockConfig)
+        self.layer_optimizer = self.configure_optimizer(block_config)
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -40,11 +39,11 @@ class KohaNetwork(torch.nn.Module):
     def initialize_state(self, batch=1):
         self.mask_int = 1
         self.network_state = torch.zeros(
-            batch, self.emb_dim, self.context + self.receptive_field - 1
+            batch, self.emb_dim, self.block_num + self.receptive_field - 1
         )
 
     def _mask(self):
-        extended_context = self.context + self.receptive_field
+        extended_context = self.block_num + self.receptive_field
         remainder = extended_context - self.mask_int
         mask = (
             torch.cat(
@@ -123,7 +122,7 @@ class KohaNetwork(torch.nn.Module):
         self.layer_optimizer.step()
         return loss, self.network_state[:, :, : self.context].reshape(batch, -1)
 
-    def configure_optimizer(self, config: KohaBlockConfig):
+    def configure_optimizer(self, config: KohaModuleConfig):
         # start with all of the candidate parameters
         param_dict = {pn: p for pn, p in self.named_parameters()}
         # filter out those that do not require grad
