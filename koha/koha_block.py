@@ -22,13 +22,9 @@ class QReceiver(torch.nn.Module):
         self.emb_dim = config.emb_dim
         self.head_num = config.head_num
         self.head_size = self.emb_dim // self.head_num
-        self.neg_sample_size = config.neg_sample_size
         assert self.emb_dim % self.head_num == 0
-        assert self.neg_sample_size < self.head_size - 1
         self.R = Parameter(torch.empty((self.emb_dim, self.emb_dim * 1)))
         self.W = Parameter(torch.empty((self.emb_dim * 1, self.emb_dim)))
-        self.ln = LayerNorm(self.head_size)
-        self.gelu = torch.nn.GELU()
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -38,24 +34,10 @@ class QReceiver(torch.nn.Module):
     def forward(self, x):
         batch = x.size(0)
         r = x @ self.R
-        r_pos = self.gelu(r)
 
-        q_pos = r_pos @ self.W
-        q_pos = q_pos.view(batch, -1, self.head_num, self.head_size)
-        q_pos = self.ln(q_pos)
-        return q_pos, r.detach()
-
-    def negative_forward(self, r):
-        # compute negative samples
-        with torch.no_grad():
-            r_neg = F.softmax(-r, dim=-1)  # * sqrt(self.head_size), dim=-1)
-            rand_neg_indices = torch.multinomial(
-                r_neg, self.neg_sample_size, replacement=False
-            )
-            neg_inputs = self.R[:, rand_neg_indices].permute(1, 2, 0)
-        # negative forward pass
-        out, _ = self.forward(neg_inputs)
-        return out
+        q = r @ self.W
+        q = q.view(batch, -1, self.head_num, self.head_size)
+        return q
 
 
 class KVReceiver(torch.nn.Module):
@@ -71,8 +53,6 @@ class KVReceiver(torch.nn.Module):
         self.W = Parameter(
             torch.empty((self.receptive_field, self.emb_dim * 1, self.emb_dim))
         )
-        self.ln = LayerNorm(self.head_size)
-        self.gelu = torch.nn.GELU()
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -81,12 +61,10 @@ class KVReceiver(torch.nn.Module):
 
     def forward(self, z):
         r = torch.einsum("bre, rei -> bri", z, self.R)
-        r = self.gelu(r)  # F.softmax(r, dim=-1)
         kv = torch.einsum("bri, rie -> bre", r, self.W)
         kv = kv.view(-1, self.receptive_field, self.head_num, self.head_size).transpose(
             1, 2
         )
-        kv = self.ln(kv)
         return kv
 
 
@@ -113,10 +91,10 @@ class KohaBlock(torch.nn.Module):
 
     def forward(self, x, z, mask):
         batch = x.size(0)
-        Q, neg_inputs = self.q(x)
+        Q = self.q(x)
+        neg_Q = self.q(-x)
         K = self.k(z)
         V = self.v(z)
-        neg_Q = self.q.negative_forward(neg_inputs)
 
         y_pos = self._attention(Q, K, V, mask).reshape(batch, self.emb_dim)
         y_neg = self._attention(neg_Q, K, V, mask).reshape(batch, -1, self.emb_dim)
