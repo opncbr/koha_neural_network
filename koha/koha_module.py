@@ -36,7 +36,7 @@ class QReceiver(torch.nn.Module):
         torch.nn.init.xavier_uniform_(self.W)
 
     def forward(self, x):
-        r = torch.einsum("be, kei -> bki", x, self.R)
+        r = torch.einsum("kbe, kei -> bki", x, self.R)
         q = torch.einsum("bke, kehn -> bkhn", r, self.W)
         return q
 
@@ -69,7 +69,7 @@ class KVReceiver(torch.nn.Module):
         torch.nn.init.xavier_uniform_(self.W)
 
     def forward(self, z):
-        r = torch.einsum("bre, krei -> bkri", z, self.R)
+        r = torch.einsum("kbre, krei -> bkri", z, self.R)
         kv = torch.einsum("bkre, krehn -> bkhrn", r, self.W)
         return kv
 
@@ -91,10 +91,11 @@ class KohaModule(torch.nn.Module):
         torch.nn.init.xavier_uniform_(self.W_o)
 
     def _attention(self, q, k, v, mask):
-        att = torch.einsum("bkhn, bkhrn -> bkhr", q, k) * (1.0 / sqrt(self.head_size))
-        att = att.masked_fill(mask == False, float("-inf"))
+        att = torch.einsum("bkhn, bkhrn -> bhkr", q, k) * (1.0 / sqrt(self.head_size))
+        att = att.masked_fill(mask == 0.0, float("-inf"))
         att = F.softmax(att, dim=-1)
-        return torch.einsum("bkhr, bkhrn -> bkhn", att, v)
+        att = torch.nan_to_num(att)  # in case all values were -inf
+        return torch.einsum("bhkr, bkhrn -> bkhn", att, v)
 
     def forward(self, x, z, mask):
         Q = self.q(x)

@@ -2,7 +2,7 @@ import torch
 from torch.nn import Embedding
 from math import sqrt
 from .config import KohaNetworkConfig, KohaModuleConfig
-from .koha_block import KohaModule
+from .koha_module import KohaModule
 from .helpers import getenv
 import inspect
 
@@ -19,8 +19,9 @@ class KohaNetwork(torch.nn.Module):
         self.block_num = block_config.block_num
         self.receptive_field = block_config.receptive_field
         self.embeddings = Embedding(self.vocab_size, self.emb_dim)
-
         self.koha_blocks = KohaModule(block_config)
+
+        self.block_num = block_config.block_num
         self.network_state = None
         self.unfold = torch.nn.Unfold(
             kernel_size=(self.emb_dim, self.receptive_field),
@@ -45,23 +46,20 @@ class KohaNetwork(torch.nn.Module):
     def _mask(self):
         extended_context = self.block_num + self.receptive_field
         remainder = extended_context - self.mask_int
-        mask = (
-            torch.cat(
-                [
-                    torch.flip(
-                        torch.tril(torch.ones(self.mask_int, self.receptive_field + 1)),
-                        dims=[0],
-                    ),
-                    torch.zeros(remainder, self.receptive_field + 1),
-                ]
-            )
-            .detach()
-            .to(torch.bool)
-        )
-        return mask
+        mask = torch.cat(
+            [
+                torch.flip(
+                    torch.tril(torch.ones(self.mask_int, self.receptive_field + 1)),
+                    dims=[0],
+                ),
+                torch.zeros(remainder, self.receptive_field + 1),
+            ]
+        ).detach()
+        mask = mask[: self.block_num, :]
+        return mask.view(1, 1, self.block_num, self.receptive_field + 1)
 
     def _increment_mask(self):
-        if self.mask_int <= self.context + self.receptive_field - 1:
+        if self.mask_int < self.block_num + self.receptive_field:
             self.mask_int += 1
 
     def forward(self, input_indices):
@@ -73,7 +71,7 @@ class KohaNetwork(torch.nn.Module):
         X = torch.cat(
             [
                 input.unsqueeze(0),
-                self.network_state.permute(2, 0, 1)[: self.context - 1, :, :],
+                self.network_state.permute(2, 0, 1)[: self.block_num - 1, :, :],
             ]
         )
         Z = (
@@ -88,28 +86,15 @@ class KohaNetwork(torch.nn.Module):
         mask = self._mask()
         self._increment_mask()
 
-        positive_pairs = []
-        negative_pairs = []
-        for block_ind, block in enumerate(self.koha_blocks):
-            x, z = X[block_ind], Z[block_ind]
-            m = mask[block_ind].view(1, 1, 1, self.receptive_field + 1)
-            if torch.all(~m).item():
-                continue
-            if block_ind > 0:
-                x = x.detach()
-                z = z.detach()
-            y_pos, y_neg, y_pos_nograd = block(x, z, m)
-            self.network_state[:, :, block_ind] = y_pos_nograd
-            positive_pairs.append(y_pos.unsqueeze(1))
-            negative_pairs.append(y_neg.unsqueeze(1))
-        positive_pairs = torch.cat(positive_pairs, dim=1)
-        negative_pairs = torch.cat(negative_pairs, dim=1)
+        positive_pairs, negative_pairs, positive_pairs_nograd = self.koha_blocks(
+            X, Z, mask
+        )
+        positive_pairs_nograd = positive_pairs_nograd.transpose(-1, -2)
+        self.network_state[:, :, : self.block_num] = positive_pairs_nograd
 
         # compute positive & negative scores
         positive_scores = (positive_pairs @ positive_pairs.transpose(-1, -2)).view(-1)
-        negative_scores = torch.einsum(
-            "bie, bjwe -> bijw", positive_pairs, negative_pairs
-        ).view(-1)
+        negative_scores = (positive_pairs @ negative_pairs.transpose(-1, -2)).view(-1)
 
         # compute positive & negative loss
         positive_loss = -torch.log(torch.sigmoid(positive_scores) + self.EPS).mean()
@@ -120,7 +105,7 @@ class KohaNetwork(torch.nn.Module):
         self.layer_optimizer.zero_grad()
         loss.backward()
         self.layer_optimizer.step()
-        return loss, self.network_state[:, :, : self.context].reshape(batch, -1)
+        return loss, self.network_state[:, :, : self.block_num].reshape(batch, -1)
 
     def configure_optimizer(self, config: KohaModuleConfig):
         # start with all of the candidate parameters
