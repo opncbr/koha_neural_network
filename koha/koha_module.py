@@ -32,8 +32,8 @@ class QReceiver(torch.nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        torch.nn.init.xavier_uniform_(self.R)
-        torch.nn.init.xavier_uniform_(self.W)
+        torch.nn.init.normal_(self.R, mean=0.0, std=0.02)
+        torch.nn.init.normal_(self.W, mean=0.0, std=0.02)
 
     def forward(self, x):
         r = torch.einsum("kbe, kei -> bki", x, self.R)
@@ -65,8 +65,8 @@ class KVReceiver(torch.nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        torch.nn.init.xavier_uniform_(self.R)
-        torch.nn.init.xavier_uniform_(self.W)
+        torch.nn.init.normal_(self.R, mean=0.0, std=0.02)
+        torch.nn.init.normal_(self.W, mean=0.0, std=0.02)
 
     def forward(self, z):
         r = torch.einsum("kbre, krei -> bkri", z, self.R)
@@ -90,7 +90,7 @@ class KohaModule(torch.nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        torch.nn.init.xavier_uniform_(self.W_o)
+        torch.nn.init.normal_(self.W_o, mean=0.0, std=0.02)
 
     def _attention(self, q, k, v, mask):
         att = torch.einsum("bkhn, bkhrn -> bhkr", q, k) * (1.0 / sqrt(self.head_size))
