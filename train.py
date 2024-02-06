@@ -1,5 +1,5 @@
 from koha.koha_network import KohaNetwork
-from koha.config import KohaBlockConfig, KohaNetworkConfig
+from koha.config import KohaModuleConfig, KohaNetworkConfig
 
 from torch.utils.data import DataLoader
 import torch
@@ -42,7 +42,7 @@ data_loader = DataLoader(
 )
 
 network_config = KohaNetworkConfig()
-block_config = KohaBlockConfig()
+block_config = KohaModuleConfig()
 koha_network = KohaNetwork(network_config, block_config)
 
 
