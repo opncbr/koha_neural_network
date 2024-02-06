@@ -86,7 +86,7 @@ class KohaModule(torch.nn.Module):
         self.W_o = Parameter(
             torch.empty((config.block_num, self.emb_dim, self.emb_dim))
         )
-        self.ln = LayerNorm(self.emb_dim)
+        self.ln = LayerNorm([self.block_num, self.emb_dim])
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -109,6 +109,8 @@ class KohaModule(torch.nn.Module):
         y_neg = self._attention(neg_Q, K, V, mask).reshape(
             -1, self.block_num, self.emb_dim
         )
-        y_pos = self.ln(torch.einsum("bke, kei -> bki", y_pos, self.W_o))
-        y_neg = self.ln(torch.einsum("bke, kei -> bki", y_neg, self.W_o))
+        y_pos = torch.einsum("bke, kei -> bki", y_pos, self.W_o)
+        y_pos = self.ln(y_pos)
+        y_neg = torch.einsum("bke, kei -> bki", y_neg, self.W_o)
+        y_neg = self.ln(y_neg)
         return y_pos, y_neg, y_pos.detach()
