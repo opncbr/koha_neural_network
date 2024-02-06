@@ -92,7 +92,7 @@ class KohaModule(torch.nn.Module):
 
     def _attention(self, q, k, v, mask):
         att = torch.einsum("bkhn, bkhrn -> bhkr", q, k) * (1.0 / sqrt(self.head_size))
-        att = att.masked_fill(mask == 0.0, float("-inf"))
+        att = att.masked_fill(mask == False, float("-inf"))
         att = F.softmax(att, dim=-1)
         att = torch.nan_to_num(att)  # in case all values were -inf
         return torch.einsum("bhkr, bkhrn -> bkhn", att, v)

@@ -46,15 +46,19 @@ class KohaNetwork(torch.nn.Module):
     def _mask(self):
         extended_context = self.block_num + self.receptive_field
         remainder = extended_context - self.mask_int
-        mask = torch.cat(
-            [
-                torch.flip(
-                    torch.tril(torch.ones(self.mask_int, self.receptive_field + 1)),
-                    dims=[0],
-                ),
-                torch.zeros(remainder, self.receptive_field + 1),
-            ]
-        ).detach()
+        mask = (
+            torch.cat(
+                [
+                    torch.flip(
+                        torch.tril(torch.ones(self.mask_int, self.receptive_field + 1)),
+                        dims=[0],
+                    ),
+                    torch.zeros(remainder, self.receptive_field + 1),
+                ]
+            )
+            .detach()
+            .to(torch.bool)
+        )
         mask = mask[: self.block_num, :]
         return mask.view(1, 1, self.block_num, self.receptive_field + 1)
 
@@ -86,15 +90,13 @@ class KohaNetwork(torch.nn.Module):
         mask = self._mask()
         self._increment_mask()
 
-        positive_pairs, negative_pairs, positive_pairs_nograd = self.koha_blocks(
-            X, Z, mask
-        )
-        positive_pairs_nograd = positive_pairs_nograd.transpose(-1, -2)
-        self.network_state[:, :, : self.block_num] = positive_pairs_nograd
+        pos_outputs, neg_outputs, pos_outputs_nograd = self.koha_blocks(X, Z, mask)
+        pos_outputs_nograd = pos_outputs_nograd.transpose(-1, -2)
+        self.network_state[:, :, : self.block_num] = pos_outputs_nograd
 
         # compute positive & negative scores
-        positive_scores = (positive_pairs @ positive_pairs.transpose(-1, -2)).view(-1)
-        negative_scores = (positive_pairs @ negative_pairs.transpose(-1, -2)).view(-1)
+        positive_scores = (pos_outputs @ pos_outputs.transpose(-1, -2)).view(-1)
+        negative_scores = (pos_outputs @ neg_outputs.transpose(-1, -2)).view(-1)
 
         # compute positive & negative loss
         positive_loss = -torch.log(torch.sigmoid(positive_scores) + self.EPS).mean()
