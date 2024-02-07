@@ -2,10 +2,10 @@ from dataclasses import dataclass
 
 
 @dataclass
-class KohaModuleConfig:
-    emb_dim: int = 256  # embedding dimension
-    head_num: int = 8  # number of heads
-    receptive_field = 5  # number of connections to other Koha blocks
+class KohaConfig:
+    emb_dim: int = 256
+    head_num: int = 8
+    receptive_field = 10
     block_num = 10
     weight_decay: float = 1e-1
     learning_rate: float = 5e-4

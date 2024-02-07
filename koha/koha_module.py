@@ -1,5 +1,5 @@
 import torch
-from .config import KohaModuleConfig
+from .config import KohaConfig
 from torch.nn.parameter import Parameter
 from torch.nn import functional as F
 from math import sqrt
@@ -17,7 +17,7 @@ class LayerNorm(torch.nn.Module):
 
 
 class QReceiver(torch.nn.Module):
-    def __init__(self, config: KohaModuleConfig):
+    def __init__(self, config: KohaConfig):
         super().__init__()
         self.head_size = config.emb_dim // config.head_num
         assert config.emb_dim % config.head_num == 0
@@ -42,7 +42,7 @@ class QReceiver(torch.nn.Module):
 
 
 class KVReceiver(torch.nn.Module):
-    def __init__(self, config: KohaModuleConfig):
+    def __init__(self, config: KohaConfig):
         super().__init__()
         self.head_size = config.emb_dim // config.head_num
         self.receptive_field = config.receptive_field + 1
@@ -75,7 +75,7 @@ class KVReceiver(torch.nn.Module):
 
 
 class KohaModule(torch.nn.Module):
-    def __init__(self, config: KohaModuleConfig):
+    def __init__(self, config: KohaConfig):
         super().__init__()
         self.emb_dim = config.emb_dim
         self.head_size = config.emb_dim // config.head_num
@@ -113,4 +113,4 @@ class KohaModule(torch.nn.Module):
         y_pos = self.ln(y_pos)
         y_neg = torch.einsum("bke, kei -> bki", y_neg, self.W_o)
         y_neg = self.ln(y_neg)
-        return y_pos, y_neg, y_pos.detach()
+        return y_pos, y_neg

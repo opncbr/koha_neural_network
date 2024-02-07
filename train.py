@@ -1,5 +1,5 @@
 from koha.koha_network import KohaNetwork
-from koha.config import KohaModuleConfig, KohaNetworkConfig
+from koha.config import KohaConfig, KohaNetworkConfig
 
 from torch.utils.data import DataLoader
 import torch
@@ -42,7 +42,7 @@ data_loader = DataLoader(
 )
 
 network_config = KohaNetworkConfig()
-block_config = KohaModuleConfig()
+block_config = KohaConfig()
 koha_network = KohaNetwork(network_config, block_config)
 
 
@@ -50,7 +50,7 @@ def train(model):
     model.train()
     # total_loss = 0
     for x, _ in tqdm(data_loader):
-        model.initialize_state(batch_size)
+        model.koha_layer.koha_state.initialize_state(batch_size)
         losses = []
         for i in range(sequence_length):
             input = x[:, i].unsqueeze(1)
