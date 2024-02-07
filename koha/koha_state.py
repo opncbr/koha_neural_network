@@ -9,6 +9,12 @@ class KohaState(torch.nn.Module):
         self.block_num = config.block_num
         self.receptive_field = config.receptive_field
         self.mask_int = 1
+        self.unfold = torch.nn.Unfold(
+            kernel_size=(self.emb_dim, self.receptive_field),
+            dilation=1,
+            padding=0,
+            stride=1,
+        )
         self.state = None
 
     def initialize_state(self, batch=1):
@@ -60,6 +66,7 @@ class KohaState(torch.nn.Module):
 
     def update_state(self, new_state):
         # update koha state
+        new_state = new_state.detach()
         new_state = new_state.transpose(-1, -2)
         self.state[:, :, : self.block_num] = new_state
         # update mask transition
