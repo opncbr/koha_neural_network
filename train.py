@@ -1,4 +1,4 @@
-from koha.koha_network import KohaNetwork
+from koha.proto_koha_network import KohaNetwork
 from koha.config import KohaConfig, KohaNetworkConfig
 
 from torch.utils.data import DataLoader

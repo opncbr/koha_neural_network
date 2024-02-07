@@ -17,3 +17,5 @@ class KohaConfig:
 @dataclass
 class KohaNetworkConfig:
     vocab_size: int = 50256  # size of vocabulary
+    layer_num: int = 3
+    inter_layer_time_delay: int = 5
