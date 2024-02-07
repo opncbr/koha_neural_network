@@ -50,7 +50,7 @@ def train(model):
     model.train()
     # total_loss = 0
     for x, _ in tqdm(data_loader):
-        model.koha_layer.koha_state.initialize_state(batch_size)
+        model.koha_layer.initialize_state(batch_size)
         losses = []
         for i in range(sequence_length):
             input = x[:, i].unsqueeze(1)

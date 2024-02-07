@@ -16,3 +16,6 @@ class KohaLayer(torch.nn.Module):
         pos_outputs, neg_outputs = self.koha_module(X, Z, M)
         self.koha_state.update_state(pos_outputs)
         return pos_outputs, neg_outputs
+
+    def initialize_state(self, batch_size):
+        self.koha_state.initialize_state(batch_size)
