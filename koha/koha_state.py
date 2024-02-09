@@ -5,6 +5,7 @@ from .config import KohaConfig
 class KohaState(torch.nn.Module):
     def __init__(self, config: KohaConfig):
         super().__init__()
+        self.device = config.device_type
         self.emb_dim = config.emb_dim
         self.block_num = config.block_num
         self.receptive_field = config.receptive_field

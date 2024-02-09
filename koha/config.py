@@ -11,11 +11,4 @@ class KohaConfig:
     learning_rate: float = 5e-4
     beta1: float = 0.9
     beta2: float = 0.95
-    device_type: str = "cpu"
-
-
-@dataclass
-class KohaNetworkConfig:
-    vocab_size: int = 50256  # size of vocabulary
-    layer_num: int = 3
-    inter_layer_time_delay: int = 5
+    device_type: str = "mps"
