@@ -3,13 +3,12 @@ from torch.nn import Embedding
 from math import sqrt
 from .config import KohaConfig
 from .koha_layer import KohaLayer
-from .koha_module import KohaModule, LayerNorm
+from .koha_module import LayerNorm
 from torch.nn import functional as F
 from .helpers import getenv
 import inspect
 
 DEBUG = getenv("DEBUG", 0)
-koha_module_name = "koha_module"
 
 
 class MLP(torch.nn.Module):
@@ -39,6 +38,7 @@ class KohaNetwork(torch.nn.Module):
         )  # https://paperswithcode.com/method/weight-tying
         self.ln = LayerNorm(koha_config.emb_dim)
         self.EPS = 1e-15
+        self.optimizer = self.configure_optimizer(koha_config)
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -57,10 +57,10 @@ class KohaNetwork(torch.nn.Module):
         negative_loss = -torch.log(1 - torch.sigmoid(negative_scores) + self.EPS).mean()
         koha_loss = positive_loss + negative_loss
 
-        # weight update
-        self.koha_layer.layer_optimizer.zero_grad()
+        # koha layer weight update
+        self.optimizer.zero_grad()
         koha_loss.backward()
-        self.koha_layer.layer_optimizer.step()
+        self.optimizer.step()
 
         # predict the next token
         first_koha_block = self.koha_layer.koha_state.get_state()[:, 0, :]

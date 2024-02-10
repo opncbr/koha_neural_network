@@ -41,7 +41,7 @@ class TextDataset(torch.utils.data.Dataset):
         return x, y
 
 
-def train(model, data_loader, optimizer):
+def train(model, data_loader):
     model.train()
     # total_loss = 0
     for x, y in tqdm(data_loader):
@@ -55,9 +55,9 @@ def train(model, data_loader, optimizer):
             losses.append(loss.item())
             koha_losses.append(koha_loss.item())
 
-            optimizer.zero_grad()
+            model.optimizer.zero_grad()
             loss.backward()
-            optimizer.step()
+            model.optimizer.step()
         print("loss", np.average(losses), np.average(koha_losses))
 
 
@@ -69,9 +69,8 @@ data_loader = DataLoader(
 vocab_size = 50256
 koha_config = KohaConfig()
 koha_network = KohaNetwork(vocab_size, koha_config)
-optimizer = koha_network.configure_optimizer(koha_config)
 
-train(koha_network, data_loader, optimizer)
+train(koha_network, data_loader)
 
 
 # torch.save(koha_input_layer.state_dict(), saved_model_dir)
