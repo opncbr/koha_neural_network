@@ -47,16 +47,18 @@ def train(model, data_loader, optimizer):
     for x, y in tqdm(data_loader):
         model.koha_layer.initialize_state(batch_size)
         losses = []
+        koha_losses = []
         for i in range(sequence_length):
             input = x[:, i].unsqueeze(1)
             target = y[:, i].unsqueeze(1)
-            out, loss = model(input, target)
+            out, loss, koha_loss = model(input, target)
             losses.append(loss.item())
+            koha_losses.append(koha_loss.item())
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-        print("loss", np.average(losses))
+        print("loss", np.average(losses), np.average(koha_losses))
 
 
 data = TextDataset(dataset=dataset, block_size=sequence_length, train=True)

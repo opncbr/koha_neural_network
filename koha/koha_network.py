@@ -9,6 +9,7 @@ from .helpers import getenv
 import inspect
 
 DEBUG = getenv("DEBUG", 0)
+koha_module_name = "koha_module"
 
 
 class MLP(torch.nn.Module):
@@ -54,11 +55,11 @@ class KohaNetwork(torch.nn.Module):
         # compute positive & negative loss
         positive_loss = -torch.log(torch.sigmoid(positive_scores) + self.EPS).mean()
         negative_loss = -torch.log(1 - torch.sigmoid(negative_scores) + self.EPS).mean()
-        loss = positive_loss + negative_loss
+        koha_loss = positive_loss + negative_loss
 
         # weight update
         self.koha_layer.layer_optimizer.zero_grad()
-        loss.backward()
+        koha_loss.backward()
         self.koha_layer.layer_optimizer.step()
 
         # predict the next token
@@ -67,22 +68,19 @@ class KohaNetwork(torch.nn.Module):
         output = self.ln(output)
         if targets is not None:
             # if we are given some desired targets also calculate the loss
-            logits = self.lm_head(x)
+            logits = self.lm_head(output)
             loss = F.cross_entropy(
                 logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1
             )
         else:
-            logits = self.lm_head(x)
+            logits = self.lm_head(output)
             loss = None
 
-        return logits, loss
+        return logits, loss, koha_loss
 
     def configure_optimizer(self, config: KohaConfig):
         # start with all of the candidate parameters
-        filtered_parameters = filter(
-            lambda p: not isinstance(p, KohaModule), self.named_parameters()
-        )
-        param_dict = {pn: p for pn, p in filtered_parameters}
+        param_dict = {pn: p for pn, p in self.named_parameters()}
         # filter out those that do not require grad
         param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
         # create optim groups. Any parameters that is 2D will be weight decayed, otherwise no.
