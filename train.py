@@ -6,6 +6,9 @@ import torch
 import numpy as np
 import os
 from tqdm import tqdm
+from koha.helpers import getenv
+import inspect
+
 
 device = "mps"  #'cuda' if torch.cuda.is_available() else 'cpu'
 dataset = "shakespeare"
@@ -14,6 +17,8 @@ sequence_length = 100
 batch_size = 64
 shuffle = True
 num_workers = 0
+
+DEBUG = getenv("DEBUG", 0)
 
 
 class TextDataset(torch.utils.data.Dataset):
@@ -36,29 +41,35 @@ class TextDataset(torch.utils.data.Dataset):
         return x, y
 
 
+def train(model, data_loader, optimizer):
+    model.train()
+    # total_loss = 0
+    for x, y in tqdm(data_loader):
+        model.koha_layer.initialize_state(batch_size)
+        losses = []
+        for i in range(sequence_length):
+            input = x[:, i].unsqueeze(1)
+            target = y[:, i].unsqueeze(1)
+            out, loss = model(input, target)
+            losses.append(loss.item())
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+        print("loss", np.average(losses))
+
+
 data = TextDataset(dataset=dataset, block_size=sequence_length, train=True)
 data_loader = DataLoader(
     data, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers
 )
 
 vocab_size = 50256
-block_config = KohaConfig()
-koha_network = KohaNetwork(vocab_size, block_config)
+koha_config = KohaConfig()
+koha_network = KohaNetwork(vocab_size, koha_config)
+optimizer = koha_network.configure_optimizer(koha_config)
 
+train(koha_network, data_loader, optimizer)
 
-def train(model):
-    model.train()
-    # total_loss = 0
-    for x, _ in tqdm(data_loader):
-        model.koha_layer.initialize_state(batch_size)
-        losses = []
-        for i in range(sequence_length):
-            input = x[:, i].unsqueeze(1)
-            loss, out = model(input)
-            losses.append(loss.item())
-        print("loss", np.average(losses))
-
-
-train(koha_network)
 
 # torch.save(koha_input_layer.state_dict(), saved_model_dir)

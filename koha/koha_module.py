@@ -6,8 +6,6 @@ from math import sqrt
 
 
 class LayerNorm(torch.nn.Module):
-    """LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False"""
-
     def __init__(self, emb_dim):
         super().__init__()
         self.weight = Parameter(torch.ones(emb_dim))
@@ -22,13 +20,14 @@ class QReceiver(torch.nn.Module):
         self.head_size = config.emb_dim // config.head_num
         assert config.emb_dim % config.head_num == 0
         self.R = Parameter(
-            torch.empty((config.block_num, config.emb_dim, config.emb_dim))
+            torch.empty((config.block_num, config.emb_dim, config.emb_dim * 4))
         )
         self.W = Parameter(
             torch.empty(
-                (config.block_num, config.emb_dim, config.head_num, self.head_size)
+                (config.block_num, config.emb_dim * 4, config.head_num, self.head_size)
             )
         )
+        self.gelu = torch.nn.GELU()
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -37,6 +36,7 @@ class QReceiver(torch.nn.Module):
 
     def forward(self, x):
         r = torch.einsum("kbe, kei -> bki", x, self.R)
+        r = self.gelu(r)
         q = torch.einsum("bke, kehn -> bkhn", r, self.W)
         return q
 

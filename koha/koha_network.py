@@ -3,10 +3,26 @@ from torch.nn import Embedding
 from math import sqrt
 from .config import KohaConfig
 from .koha_layer import KohaLayer
+from .koha_module import KohaModule, LayerNorm
+from torch.nn import functional as F
 from .helpers import getenv
 import inspect
 
 DEBUG = getenv("DEBUG", 0)
+
+
+class MLP(torch.nn.Module):
+    def __init__(self, config: KohaConfig):
+        super().__init__()
+        self.c_fc = torch.nn.Linear(config.emb_dim, 4 * config.emb_dim, bias=False)
+        self.gelu = torch.nn.GELU()
+        self.c_proj = torch.nn.Linear(4 * config.emb_dim, config.emb_dim, bias=False)
+
+    def forward(self, x):
+        x = self.c_fc(x)
+        x = self.gelu(x)
+        x = self.c_proj(x)
+        return x
 
 
 class KohaNetwork(torch.nn.Module):
@@ -14,15 +30,20 @@ class KohaNetwork(torch.nn.Module):
         super().__init__()
         self.embeddings = Embedding(vocab_size, koha_config.emb_dim)
         self.koha_layer = KohaLayer(koha_config)
-
+        self.mlp = MLP(koha_config)
+        self.lm_head = torch.nn.Linear(koha_config.emb_dim, vocab_size, bias=False)
+        # weights tying
+        self.embeddings.weight = (
+            self.lm_head.weight
+        )  # https://paperswithcode.com/method/weight-tying
+        self.ln = LayerNorm(koha_config.emb_dim)
         self.EPS = 1e-15
-        self.layer_optimizer = self.configure_optimizer(koha_config)
         self.reset_parameters()
 
     def reset_parameters(self):
         torch.nn.init.kaiming_uniform_(self.embeddings.weight, a=sqrt(5))
 
-    def forward(self, input_indices):
+    def forward(self, input_indices, targets=None):
         x = self.embeddings(input_indices).squeeze(1)
         pos_outputs, neg_outputs = self.koha_layer(x)
 
@@ -36,14 +57,32 @@ class KohaNetwork(torch.nn.Module):
         loss = positive_loss + negative_loss
 
         # weight update
-        self.layer_optimizer.zero_grad()
+        self.koha_layer.layer_optimizer.zero_grad()
         loss.backward()
-        self.layer_optimizer.step()
-        return loss, self.koha_layer.koha_state.get_state()
+        self.koha_layer.layer_optimizer.step()
+
+        # predict the next token
+        first_koha_block = self.koha_layer.koha_state.get_state()[:, 0, :]
+        output = self.mlp(first_koha_block)
+        output = self.ln(output)
+        if targets is not None:
+            # if we are given some desired targets also calculate the loss
+            logits = self.lm_head(x)
+            loss = F.cross_entropy(
+                logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1
+            )
+        else:
+            logits = self.lm_head(x)
+            loss = None
+
+        return logits, loss
 
     def configure_optimizer(self, config: KohaConfig):
         # start with all of the candidate parameters
-        param_dict = {pn: p for pn, p in self.named_parameters()}
+        filtered_parameters = filter(
+            lambda p: not isinstance(p, KohaModule), self.named_parameters()
+        )
+        param_dict = {pn: p for pn, p in filtered_parameters}
         # filter out those that do not require grad
         param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
         # create optim groups. Any parameters that is 2D will be weight decayed, otherwise no.
@@ -56,13 +95,12 @@ class KohaNetwork(torch.nn.Module):
         ]
         num_decay_params = sum(p.numel() for p in decay_params)
         num_nodecay_params = sum(p.numel() for p in nodecay_params)
-        if DEBUG > 0:
-            print(
-                f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters"
-            )
-            print(
-                f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters"
-            )
+        print(
+            f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters"
+        )
+        print(
+            f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters"
+        )
         # Create AdamW optimizer and use the fused version if it is available
         fused_available = "fused" in inspect.signature(torch.optim.AdamW).parameters
         use_fused = fused_available and config.device_type == "cuda"
@@ -73,7 +111,6 @@ class KohaNetwork(torch.nn.Module):
             betas=(config.beta1, config.beta2),
             **extra_args,
         )
-        if DEBUG > 0:
-            print(f"using fused AdamW: {use_fused}")
+        print(f"using fused AdamW: {use_fused}")
 
         return optimizer

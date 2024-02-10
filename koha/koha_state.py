@@ -44,7 +44,7 @@ class KohaState(torch.nn.Module):
         return mask.view(1, 1, self.block_num, self.receptive_field + 1)
 
     def get_state(self):
-        self.state[:, :, : self.block_num].transpose(-1, -2)
+        return self.state[:, :, : self.block_num].transpose(-1, -2)
 
     def forward(self, x):
         batch = x.size(0)
