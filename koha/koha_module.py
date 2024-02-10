@@ -20,11 +20,18 @@ class QReceiver(torch.nn.Module):
         self.head_size = config.emb_dim // config.head_num
         assert config.emb_dim % config.head_num == 0
         self.R = Parameter(
-            torch.empty((config.block_num, config.emb_dim, config.emb_dim * 4))
+            torch.empty(
+                (config.block_num, config.emb_dim, config.emb_dim * config.mlp_scaling)
+            )
         )
         self.W = Parameter(
             torch.empty(
-                (config.block_num, config.emb_dim * 4, config.head_num, self.head_size)
+                (
+                    config.block_num,
+                    config.emb_dim * config.mlp_scaling,
+                    config.head_num,
+                    self.head_size,
+                )
             )
         )
         self.gelu = torch.nn.GELU()
@@ -48,7 +55,12 @@ class KVReceiver(torch.nn.Module):
         self.receptive_field = config.receptive_field + 1
         self.R = Parameter(
             torch.empty(
-                (config.block_num, self.receptive_field, config.emb_dim, config.emb_dim)
+                (
+                    config.block_num,
+                    self.receptive_field,
+                    config.emb_dim,
+                    config.emb_dim * config.mlp_scaling,
+                )
             )
         )
         self.W = Parameter(
@@ -56,12 +68,13 @@ class KVReceiver(torch.nn.Module):
                 (
                     config.block_num,
                     self.receptive_field,
-                    config.emb_dim,
+                    config.emb_dim * config.mlp_scaling,
                     config.head_num,
                     self.head_size,
                 )
             )
         )
+        self.gelu = torch.nn.GELU()
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -70,6 +83,7 @@ class KVReceiver(torch.nn.Module):
 
     def forward(self, z):
         r = torch.einsum("kbre, krei -> bkri", z, self.R)
+        r = self.gelu(r)
         kv = torch.einsum("bkre, krehn -> bkhrn", r, self.W)
         return kv
 

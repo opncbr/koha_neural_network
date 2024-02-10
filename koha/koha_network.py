@@ -14,9 +14,13 @@ DEBUG = getenv("DEBUG", 0)
 class MLP(torch.nn.Module):
     def __init__(self, config: KohaConfig):
         super().__init__()
-        self.c_fc = torch.nn.Linear(config.emb_dim, 4 * config.emb_dim, bias=False)
+        self.c_fc = torch.nn.Linear(
+            config.emb_dim, config.mlp_scaling * config.emb_dim, bias=False
+        )
         self.gelu = torch.nn.GELU()
-        self.c_proj = torch.nn.Linear(4 * config.emb_dim, config.emb_dim, bias=False)
+        self.c_proj = torch.nn.Linear(
+            config.mlp_scaling * config.emb_dim, config.emb_dim, bias=False
+        )
 
     def forward(self, x):
         x = self.c_fc(x)
